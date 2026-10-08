@@ -19,6 +19,21 @@ from pathlib import Path
 import duckdb
 import pandas as pd
 
+# Award dates outside this window are data-entry junk (e.g. year 24, 204) -> set to NULL
+MIN_YEAR, MAX_YEAR = 2018, 2026
+
+# Heuristic buyer classification from the raw buyer name (first match wins). Used only to
+# build comparable cohorts for price benchmarks; not an official classification.
+BUYER_TYPE_SQL = """
+    CASE
+      WHEN regexp_matches(UPPER(t.buyer_name), 'UNIVERSIT|COLLEGE|POLYTECHNIC|TECHNICAL|TRAINING|SCHOOL|INSTITUTE') THEN 'education'
+      WHEN regexp_matches(UPPER(t.buyer_name), 'HOSPITAL|HEALTH|MEDICAL|KEMSA|CLINIC') THEN 'health'
+      WHEN regexp_matches(UPPER(t.buyer_name), 'COUNTY|MUNICIPAL|CITY COUNCIL') THEN 'county_government'
+      WHEN regexp_matches(UPPER(t.buyer_name), 'AUTHORITY|COMMISSION|COUNCIL|BOARD|AGENCY|MINISTRY|DEPARTMENT|BUREAU|FUND|SERVICE|TRIBUNAL') THEN 'state_agency'
+      WHEN regexp_matches(UPPER(t.buyer_name), 'COMPANY|CORPORATION|LIMITED|LTD|SACCO|BANK') THEN 'state_corporation'
+      ELSE 'other'
+    END"""
+
 
 def norm(name):
     """Normalise organisation names for matching (IDs in this dataset are unreliable)."""
@@ -115,19 +130,22 @@ def main():
     for name, df in [("tenders", tenders), ("awards", awards), ("award_suppliers", award_suppliers)]:
         con.execute(f"CREATE OR REPLACE TABLE {name} AS SELECT * FROM df")
     # typed convenience view used by the MCP tools
-    con.execute("""
+    con.execute(f"""
         CREATE OR REPLACE VIEW award_facts AS
+        WITH dated AS (
+            SELECT a.*, TRY_CAST(a.award_date AS TIMESTAMP) AS d FROM awards a
+        )
         SELECT a.ocid, a.award_id,
-               TRY_CAST(a.award_date AS TIMESTAMP)      AS award_date,
+               CASE WHEN YEAR(a.d) BETWEEN {MIN_YEAR} AND {MAX_YEAR} THEN a.d END AS award_date,
                TRY_CAST(a.amount AS DOUBLE)             AS award_amount,
                a.currency,
-               t.buyer_name, t.buyer_norm, t.title, t.category,
+               t.buyer_name, t.buyer_norm, {BUYER_TYPE_SQL} AS buyer_type, t.title, t.category,
                t.procurement_method, t.procurement_method_details,
                TRY_CAST(t.value_amount AS DOUBLE)       AS tender_amount,
                TRY_CAST(t.period_start AS TIMESTAMP)    AS period_start,
                TRY_CAST(t.period_end AS TIMESTAMP)      AS period_end,
                s.supplier_name, s.supplier_norm
-        FROM awards a
+        FROM dated a
         LEFT JOIN tenders t USING (ocid)
         LEFT JOIN award_suppliers s ON s.ocid = a.ocid AND s.award_id IS NOT DISTINCT FROM a.award_id
     """)

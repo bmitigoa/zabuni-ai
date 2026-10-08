@@ -36,6 +36,7 @@ show("Procurement methods", """
     SELECT procurement_method, procurement_method_details, COUNT(*) n
     FROM tenders GROUP BY 1,2 ORDER BY n DESC LIMIT 15""")
 show("Categories", "SELECT category, COUNT(*) n FROM tenders GROUP BY 1 ORDER BY n DESC")
+show("Buyer types (heuristic, from buyer name)", "SELECT buyer_type, COUNT(*) n FROM award_facts GROUP BY 1 ORDER BY n DESC")
 show("Currencies (awards)", "SELECT currency, COUNT(*) n FROM awards GROUP BY 1 ORDER BY n DESC")
 show("Awards per year", """
     SELECT YEAR(award_date) y, COUNT(*) n FROM award_facts GROUP BY 1 ORDER BY 1""")
