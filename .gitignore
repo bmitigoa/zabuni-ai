@@ -218,3 +218,15 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- Zabuni AI ---
+data/raw/
+*.duckdb
+*.duckdb.wal
+.env
+logs/
+*.sqlite
+
+# Local-only: never push (per project owner)
+CLAUDE.md
+docs/daily/

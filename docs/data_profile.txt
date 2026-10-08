@@ -1,0 +1,104 @@
+
+== tenders (260,744 rows) - % filled ==
+  ocid                          100.0%
+  release_id                    100.0%
+  release_date                  100.0%
+  buyer_id                      100.0%
+  buyer_name                    100.0%
+  buyer_norm                    100.0%
+  tender_id                     100.0%
+  title                         100.0%
+  description                     0.0%
+  status                          0.0%
+  value_amount                    0.0%
+  currency                        0.0%
+  procurement_method            100.0%
+  procurement_method_details      0.0%
+  category                       99.7%
+  period_start                   99.9%
+  period_end                     99.9%
+  number_of_tenderers             0.0%
+
+== awards (109,237 rows) - % filled ==
+  ocid                          100.0%
+  award_id                      100.0%
+  award_date                     98.2%
+  status                          0.0%
+  amount                        100.0%
+  currency                      100.0%
+  title                         100.0%
+  n_suppliers                   100.0%
+
+== award_suppliers (79,943 rows) - % filled ==
+  ocid                          100.0%
+  award_id                      100.0%
+  supplier_id                   100.0%
+  supplier_name                 100.0%
+  supplier_norm                 100.0%
+
+== Procurement methods ==
+   ('open', None, 234491)
+   ('selective', None, 17396)
+   ('direct', None, 8754)
+   ('SpeciallyPermitted', None, 56)
+   ('AlternativeSelection', None, 41)
+   ('communityparticipartion', None, 6)
+
+== Categories ==
+   ('works', 116403)
+   ('goods', 85602)
+   ('services', 58058)
+   (None, 681)
+
+== Currencies (awards) ==
+   ('KES', 109237)
+
+== Awards per year ==
+   (24, 5)
+   (204, 1)
+   (2000, 1)
+   (2005, 1)
+   (2009, 3)
+   (2011, 1)
+   (2013, 1)
+   (2014, 2)
+   (2015, 3)
+   (2016, 1)
+   (2017, 13)
+   (2018, 3057)
+   (2019, 6463)
+   (2020, 6378)
+   (2021, 7799)
+   (2022, 17207)
+   (2023, 27108)
+   (2024, 26761)
+   (2025, 9230)
+   (2026, 3284)
+   (None, 1918)
+
+== Award amount percentiles (KES) ==
+   ([1200.0, 117847.5, 500000.0, 2657776.2800000003, 136746681.57399952], 160583268000.0)
+
+== Top 10 buyers by awards ==
+   ('Kenya Rural Roads Authority ', 5654)
+   ('South Nyanza Sugar Company Limited', 3694)
+   ('Makueni County Government', 2586)
+   ('Kenya National Highway Authority', 2184)
+   ('Masinde Muliro University of Science and Technology (MMUST)', 2122)
+   ('Maseno University', 1706)
+   ('NATIONAL AIDS CONTROL COUNCIL', 1618)
+   ('West Pokot County Government', 1592)
+   ('Kenya Electricity  Generating Company', 1285)
+   ('PC KINYANJUI TECHNICAL TRAINING INSTITUTE', 1260)
+
+== Sample titles ==
+   ('NEWS PAPER ANNOUNCEMENT -VC INAUGURATION',)
+   ('REQUEST FOR PROPOSAL: TO CARRY OUT FEASIBILITY STUDY AND ENVIRONMENTAL IMPACT ASSESSMENT ON UPGRADING OF MULTI-COLOURED IGOMBE CRATER LAKE.',)
+   ('SUPPLY AND DELIVERY OF EGGS TO KENYA SCHOOL OF GOVERNMENT, MATUGA CAMPUS.',)
+   ('ROUTINE MAINTENANCE OF (D223) HOTELI KWA WOTE–IGWERO–(E1067) NYASUMI  ',)
+   ('SUPPLY AND DELIVERY OF OFFICE FURNITURE',)
+   ('RENOVATION AND UPGRADING OF KIKIMA MALIKITI MARKET',)
+   ('COMPLITION OF MWAMBOGHO-MWANARIA ROAD FORMATION',)
+   ('PURCHASE OF AIR TICKET',)
+   ('PROVISION OF CONFERENCE FACILITY-CLEARING THE BACKLOG OF INTERNAL AUDIT QUARTERLY REPORTS',)
+   ('SUPPLY OF CLEANING MATERIALS FOR FACULTY OF EDUCATION',)
