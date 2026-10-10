@@ -272,7 +272,7 @@ def test_rules_are_labelled_provisional_and_overridable(monkeypatch, tmp_path):
 
 
 def test_every_tool_is_documented_in_red_flags():
+    from mcp_server.registry import TOOLS          # derived from the registry: adding a tool never edits this test
     doc = open("docs/red_flags.md", encoding="utf-8").read()
-    for name in ("search_awards", "compute_price_benchmark", "detect_splitting",
-                 "detect_noncompetitive_method", "supplier_concentration"):
+    for name in TOOLS:
         assert name in doc, f"{name} missing from docs/red_flags.md"

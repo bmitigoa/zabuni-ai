@@ -2,6 +2,7 @@
 and the standard response envelope {result, evidence, params_used, warnings}.
 
 Only company/organisation names are ever handled here; the database holds no personal data.
+Limits and heuristics come from mcp_server/rules.py; nothing numeric is decided in this file.
 """
 from __future__ import annotations
 
@@ -21,7 +22,6 @@ from data.loader import norm  # noqa: E402  (same normaliser the loader used, so
 from mcp_server.rules import load_rules  # noqa: E402
 
 DB_PATH = Path(os.environ.get("ZABUNI_DB", ROOT / "data" / "zabuni.duckdb"))
-MAX_EVIDENCE = 100
 
 _con: duckdb.DuckDBPyConnection | None = None
 
@@ -60,20 +60,28 @@ def frame(sql: str, params: list[Any] | None = None):
 
 
 # ---------------------------------------------------------------- response envelope
+def evidence_cap() -> int:
+    return int(rules()["limits"]["evidence_max_items"])
+
+
 def envelope(result: Any, evidence: list[dict[str, Any]] | None = None,
              params: dict[str, Any] | None = None, warnings: list[str] | None = None) -> dict[str, Any]:
     """Standard tool response. Evidence is capped; the cap is announced in warnings."""
-    ev = evidence or []
+    ev_items = evidence or []
     warns = list(warnings or [])
-    if len(ev) > MAX_EVIDENCE:
-        warns.append(f"Evidence truncated to {MAX_EVIDENCE} of {len(ev)} items.")
-        ev = ev[:MAX_EVIDENCE]
-    return {"result": result, "evidence": ev, "params_used": params or {}, "warnings": warns}
+    cap = evidence_cap()
+    if len(ev_items) > cap:
+        warns.append(f"Evidence truncated to {cap} of {len(ev_items)} items.")
+        ev_items = ev_items[:cap]
+    return {"result": result, "evidence": ev_items, "params_used": params or {}, "warnings": warns}
 
 
 def error(message: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Envelope for bad input / unusable request: no result, no evidence, explicit message."""
-    return envelope({"error": message}, [], params, [message])
+    """Envelope for bad input / unusable request: no result, no evidence, explicit message.
+
+    Built by hand (not via envelope()) so reporting an error can never itself fail, e.g. when the rules file that
+    envelope() reads for the evidence cap is the thing that is broken."""
+    return {"result": {"error": message}, "evidence": [], "params_used": params or {}, "warnings": [message]}
 
 
 def ev(ocid: str, award_id: str | None, field: str, value: Any) -> dict[str, Any]:
@@ -136,6 +144,7 @@ def resolve_buyer(buyer: str) -> tuple[str | None, list[str], str | None]:
     Returns (buyer_norm, candidates, problem). Exact normalised match wins; otherwise a unique
     substring match; otherwise a problem message with candidate/similar names for the agent.
     """
+    lim = rules()["limits"]
     q = norm(buyer)
     if not q:
         return None, [], "buyer is empty."
@@ -147,8 +156,9 @@ def resolve_buyer(buyer: str) -> tuple[str | None, list[str], str | None]:
     if len(subs) == 1:
         return subs[0], subs, None
     if len(subs) > 1:
-        return None, subs[:10], f"buyer {buyer!r} is ambiguous ({len(subs)} matches); use a more specific name."
-    similar = difflib.get_close_matches(q, names, n=5, cutoff=0.5)
+        return (None, subs[:lim["candidates_shown"]],
+                f"buyer {buyer!r} is ambiguous ({len(subs)} matches); use a more specific name.")
+    similar = difflib.get_close_matches(q, names, n=lim["fuzzy_matches"], cutoff=lim["fuzzy_cutoff"])
     return None, similar, f"no buyer matches {buyer!r}."
 
 

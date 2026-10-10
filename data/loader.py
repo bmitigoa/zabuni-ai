@@ -14,32 +14,44 @@ import argparse
 import gzip
 import json
 import re
+import sys
 from pathlib import Path
 
 import duckdb
 import pandas as pd
 
-# Award dates outside this window are data-entry junk (e.g. year 24, 204) -> set to NULL
-MIN_YEAR, MAX_YEAR = 2018, 2026
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-# Heuristic buyer classification from the raw buyer name (first match wins). Used only to
-# build comparable cohorts for price benchmarks; not an official classification.
-BUYER_TYPE_SQL = """
-    CASE
-      WHEN regexp_matches(UPPER(t.buyer_name), 'UNIVERSIT|COLLEGE|POLYTECHNIC|TECHNICAL|TRAINING|SCHOOL|INSTITUTE') THEN 'education'
-      WHEN regexp_matches(UPPER(t.buyer_name), 'HOSPITAL|HEALTH|MEDICAL|KEMSA|CLINIC') THEN 'health'
-      WHEN regexp_matches(UPPER(t.buyer_name), 'COUNTY|MUNICIPAL|CITY COUNCIL') THEN 'county_government'
-      WHEN regexp_matches(UPPER(t.buyer_name), 'AUTHORITY|COMMISSION|COUNCIL|BOARD|AGENCY|MINISTRY|DEPARTMENT|BUREAU|FUND|SERVICE|TRIBUNAL') THEN 'state_agency'
-      WHEN regexp_matches(UPPER(t.buyer_name), 'COMPANY|CORPORATION|LIMITED|LTD|SACCO|BANK') THEN 'state_corporation'
-      ELSE 'other'
-    END"""
+from mcp_server.rules import load_rules  # noqa: E402  (year window and buyer types live in ONE place: rules.py)
+
+
+def buyer_type_sql(rules: dict) -> str:
+    """SQL CASE that classifies a buyer by keywords in its raw name (first matching rule wins).
+
+    Built from rules['buyer_types'], so editing the keyword lists there and re-running this loader is all it takes.
+    A heuristic used only to build comparable cohorts for price benchmarks; not an official classification."""
+    def lit(text: str) -> str:
+        return "'" + text.replace("'", "''") + "'"
+
+    whens = "\n".join(
+        f"      WHEN regexp_matches(UPPER(t.buyer_name), {lit('|'.join(r['keywords']))}) THEN {lit(r['type'])}"
+        for r in rules["buyer_types"])
+    return f"CASE\n{whens}\n      ELSE {lit(rules['default_buyer_type'])}\n    END"
 
 
 def norm(name):
-    """Normalise organisation names for matching (IDs in this dataset are unreliable)."""
+    """Normalise organisation names for matching (IDs in this dataset are unreliable).
+
+    Upper-case, punctuation to spaces, drop company-form words (LIMITED, LTD, CO, COMPANY, ENTERPRISE(S), THE).
+    A hyphenated "CO-" prefix is part of the word (CO-OPERATIVE -> COOPERATIVE, CO-ORDINATION -> COORDINATION), so
+    it must be joined BEFORE the hyphen becomes a space and "CO" is stripped as a company suffix (the flaw that
+    produced "OPERATIVE BANK"). A standalone "Co" / "& Co." is still removed, as before."""
     if not name:
         return None
-    n = re.sub(r"[^A-Z0-9 ]", " ", str(name).upper())
+    n = str(name).upper()
+    n = re.sub(r"\bCO\s*-\s*(?!LTD\b|LIMITED\b)(?=[A-Z])", "CO", n)
+    n = re.sub(r"\bCO\s+(?=OPERATIVE)", "CO", n)
+    n = re.sub(r"[^A-Z0-9 ]", " ", n)
     n = re.sub(r"\b(LIMITED|LTD|CO|COMPANY|ENTERPRISES?|THE)\b", " ", n)
     return re.sub(r"\s+", " ", n).strip() or None
 
@@ -125,6 +137,8 @@ def main():
     ap.add_argument("--db", default="data/zabuni.duckdb")
     args = ap.parse_args()
 
+    rules = load_rules()
+    min_year, max_year = rules["data_cleaning"]["min_year"], rules["data_cleaning"]["max_year"]
     tenders, awards, award_suppliers = load(Path(args.src))
     con = duckdb.connect(args.db)
     for name, df in [("tenders", tenders), ("awards", awards), ("award_suppliers", award_suppliers)]:
@@ -136,10 +150,10 @@ def main():
             SELECT a.*, TRY_CAST(a.award_date AS TIMESTAMP) AS d FROM awards a
         )
         SELECT a.ocid, a.award_id,
-               CASE WHEN YEAR(a.d) BETWEEN {MIN_YEAR} AND {MAX_YEAR} THEN a.d END AS award_date,
+               CASE WHEN YEAR(a.d) BETWEEN {min_year} AND {max_year} THEN a.d END AS award_date,
                TRY_CAST(a.amount AS DOUBLE)             AS award_amount,
                a.currency,
-               t.buyer_name, t.buyer_norm, {BUYER_TYPE_SQL} AS buyer_type, t.title, t.category,
+               t.buyer_name, t.buyer_norm, {buyer_type_sql(rules)} AS buyer_type, t.title, t.category,
                t.procurement_method, t.procurement_method_details,
                TRY_CAST(t.value_amount AS DOUBLE)       AS tender_amount,
                TRY_CAST(t.period_start AS TIMESTAMP)    AS period_start,

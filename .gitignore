@@ -230,3 +230,7 @@ logs/
 # Local-only: never push (per project owner)
 CLAUDE.md
 docs/daily/
+
+# Agent run artefacts (Day 3): draft summaries written via the Filesystem MCP server
+outputs/
+*.bak

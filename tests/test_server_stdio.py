@@ -8,8 +8,10 @@ from mcp.client.stdio import stdio_client
 
 from mcp_server.common import ROOT
 
-EXPECTED_TOOLS = {"search_awards", "compute_price_benchmark", "detect_splitting",
-                  "detect_noncompetitive_method", "supplier_concentration"}
+from mcp_server.registry import TOOLS, describe, discover_tools
+
+discover_tools()
+EXPECTED_TOOLS = set(TOOLS)          # derived from the registry: adding a tool never edits this test
 
 
 async def _session_checks():
@@ -20,7 +22,12 @@ async def _session_checks():
             tools = (await s.list_tools()).tools
             assert {t.name for t in tools} == EXPECTED_TOOLS
             assert all(t.description and len(t.description) > 200 for t in tools)  # the agent reads these
-            assert all(t.annotations and t.annotations.readOnlyHint for t in tools)
+            for t in tools:                                                   # annotations and roles mirror the registry
+                spec = TOOLS[t.name]
+                assert t.annotations.readOnlyHint is spec.read_only
+                assert t.description == describe(t.name)                      # rendered from rules, not hand-written
+                role = ((t.meta or {}).get("zabuni") or {}).get("role")
+                assert role == spec.role
 
             res = await s.call_tool("search_awards", {"buyer": "Makueni County Government", "limit": 2})
             assert not res.isError
