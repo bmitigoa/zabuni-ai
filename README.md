@@ -42,8 +42,8 @@ version 2026.8.31 in `agent/settings.py`), so the first agent run needs network 
 ```
 It prints the **plan** (built from the tools it discovered on the server), every **tool call** with timing, any
 **follow-ups**, **recoveries** and **corrections**, and the **flags created**, then saves a draft summary to `outputs/`
-through the Filesystem MCP server. A real run is recorded in [`docs/sample_run/`](docs/sample_run/) (console output,
-the audit log lines of that run, the draft summary and the flags it created).
+through the Filesystem MCP server. Two real runs are recorded in [`docs/sample_run/`](docs/sample_run/) (the audit-log lines of each run, the draft
+summary and the flags created; one includes the console output), with notes on how they differ.
 
 | Where | What |
 |---|---|

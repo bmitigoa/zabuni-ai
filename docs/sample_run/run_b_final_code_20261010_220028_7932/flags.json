@@ -1,0 +1,428 @@
+[
+ {
+  "flag_id": "flag_cb344cc2cfcd",
+  "created_at": "2026-10-10 22:00:42.104668",
+  "run_id": "run_20261010_220028_7932",
+  "ocid": "ocds-5whusi-1678926/2024/2025",
+  "rule": "compute_price_benchmark",
+  "severity": "high",
+  "explanation": "PROVISION OF STAFF MEDICAL INSURANCE COVER (ocds-5whusi-1678926/2024/2025): 7.0x median of 289 comparable awards (median KES 30,137,312)",
+  "status": "pending_review",
+  "evidence": [
+   {
+    "ocid": "ocds-5whusi-1678926/2024/2025",
+    "award_id": "20250117124905-113221",
+    "field": "award_amount",
+    "value": 210000000.0
+   },
+   {
+    "ocid": "ocds-5whusi-CA/BGM/OT/01/2024/ 2025",
+    "award_id": "20250109110600-112043",
+    "field": "award_amount",
+    "value": 30137312.0
+   },
+   {
+    "ocid": "ocds-5whusi-ENNDA/CONTR/002/2022-2023",
+    "award_id": "20250205150305-38139",
+    "field": "award_amount",
+    "value": 30358527.0
+   },
+   {
+    "ocid": "ocds-5whusi-068022",
+    "award_id": "20250205150202-21524",
+    "field": "award_amount",
+    "value": 29539901.0
+   },
+   {
+    "ocid": "ocds-5whusi-7541",
+    "award_id": "20190423104958-3266",
+    "field": "award_amount",
+    "value": 29258798.0
+   },
+   {
+    "ocid": "ocds-5whusi-TENDERNO.KMA/ONT/19/2023-2024",
+    "award_id": "20240503154826-82284",
+    "field": "award_amount",
+    "value": 29134961.0
+   },
+   {
+    "ocid": "ocds-5whusi-229235-TENDERNUMBER:HBCA/PROC/S9/2024-2025",
+    "award_id": "20250311160157-117970",
+    "field": "award_amount",
+    "value": 31157420.0
+   },
+   {
+    "ocid": "ocds-5whusi-MBT/COU/ASS/2/2022–2023",
+    "award_id": "20250205150303-42414",
+    "field": "award_amount",
+    "value": 28508710.0
+   },
+   {
+    "ocid": "ocds-5whusi-CAK/OT/MED/10/2020-2021/01",
+    "award_id": "20250205150213-33414",
+    "field": "award_amount",
+    "value": 31879191.0
+   },
+   {
+    "ocid": "ocds-5whusi-CA/BGM/OT/01/2023/2024",
+    "award_id": "20231211100042-67520",
+    "field": "award_amount",
+    "value": 31945605.0
+   },
+   {
+    "ocid": "ocds-5whusi-HBCA/PROC/S9/1/2022-2023",
+    "award_id": "20250205150304-43894",
+    "field": "award_amount",
+    "value": 28027242.0
+   }
+  ]
+ },
+ {
+  "flag_id": "flag_3575640e7be4",
+  "created_at": "2026-10-10 22:00:42.197764",
+  "run_id": "run_20261010_220028_7932",
+  "ocid": "ocds-5whusi-1110244-2-2022/2023",
+  "rule": "compute_price_benchmark",
+  "severity": "high",
+  "explanation": "PROVISION OF STAFF MEDICAL INSURANCE COVER  (ocds-5whusi-1110244-2-2022/2023): 6.6x median of 289 comparable awards (median KES 30,137,312)",
+  "status": "pending_review",
+  "evidence": [
+   {
+    "ocid": "ocds-5whusi-1110244-2-2022/2023",
+    "award_id": "20250205150258-53204",
+    "field": "award_amount",
+    "value": 198999999.0
+   },
+   {
+    "ocid": "ocds-5whusi-CA/BGM/OT/01/2024/ 2025",
+    "award_id": "20250109110600-112043",
+    "field": "award_amount",
+    "value": 30137312.0
+   },
+   {
+    "ocid": "ocds-5whusi-ENNDA/CONTR/002/2022-2023",
+    "award_id": "20250205150305-38139",
+    "field": "award_amount",
+    "value": 30358527.0
+   },
+   {
+    "ocid": "ocds-5whusi-068022",
+    "award_id": "20250205150202-21524",
+    "field": "award_amount",
+    "value": 29539901.0
+   },
+   {
+    "ocid": "ocds-5whusi-7541",
+    "award_id": "20190423104958-3266",
+    "field": "award_amount",
+    "value": 29258798.0
+   },
+   {
+    "ocid": "ocds-5whusi-TENDERNO.KMA/ONT/19/2023-2024",
+    "award_id": "20240503154826-82284",
+    "field": "award_amount",
+    "value": 29134961.0
+   },
+   {
+    "ocid": "ocds-5whusi-229235-TENDERNUMBER:HBCA/PROC/S9/2024-2025",
+    "award_id": "20250311160157-117970",
+    "field": "award_amount",
+    "value": 31157420.0
+   },
+   {
+    "ocid": "ocds-5whusi-MBT/COU/ASS/2/2022–2023",
+    "award_id": "20250205150303-42414",
+    "field": "award_amount",
+    "value": 28508710.0
+   },
+   {
+    "ocid": "ocds-5whusi-CAK/OT/MED/10/2020-2021/01",
+    "award_id": "20250205150213-33414",
+    "field": "award_amount",
+    "value": 31879191.0
+   },
+   {
+    "ocid": "ocds-5whusi-CA/BGM/OT/01/2023/2024",
+    "award_id": "20231211100042-67520",
+    "field": "award_amount",
+    "value": 31945605.0
+   },
+   {
+    "ocid": "ocds-5whusi-HBCA/PROC/S9/1/2022-2023",
+    "award_id": "20250205150304-43894",
+    "field": "award_amount",
+    "value": 28027242.0
+   }
+  ]
+ },
+ {
+  "flag_id": "flag_b35ee0827bce",
+  "created_at": "2026-10-10 22:00:42.289983",
+  "run_id": "run_20261010_220028_7932",
+  "ocid": "ocds-5whusi-42686",
+  "rule": "compute_price_benchmark",
+  "severity": "high",
+  "explanation": "PROVISION OF STAFF MEDICAL COVER (ocds-5whusi-42686): 8.7x median of 96 comparable awards (median KES 22,669,244)",
+  "status": "pending_review",
+  "evidence": [
+   {
+    "ocid": "ocds-5whusi-42686",
+    "award_id": "20250205150132-43031",
+    "field": "award_amount",
+    "value": 197527657.0
+   },
+   {
+    "ocid": "ocds-5whusi-23550",
+    "award_id": "20250205150113-39880",
+    "field": "award_amount",
+    "value": 22595837.8
+   },
+   {
+    "ocid": "ocds-5whusi-46281",
+    "award_id": "20201221125518-15148",
+    "field": "award_amount",
+    "value": 22742650.0
+   },
+   {
+    "ocid": "ocds-5whusi-8498",
+    "award_id": "20190129160449-3563",
+    "field": "award_amount",
+    "value": 22590956.0
+   },
+   {
+    "ocid": "ocds-5whusi-45365",
+    "award_id": "20250205150129-41374",
+    "field": "award_amount",
+    "value": 23766338.0
+   },
+   {
+    "ocid": "ocds-5whusi-29407",
+    "award_id": "20200430124920-10149",
+    "field": "award_amount",
+    "value": 24000000.0
+   },
+   {
+    "ocid": "ocds-5whusi-7427",
+    "award_id": "20190221083546-3226",
+    "field": "award_amount",
+    "value": 20967068.0
+   },
+   {
+    "ocid": "ocds-5whusi-39815",
+    "award_id": "20201006144420-13023",
+    "field": "award_amount",
+    "value": 20601329.0
+   },
+   {
+    "ocid": "ocds-5whusi-40091",
+    "award_id": "20210406172531-15878",
+    "field": "award_amount",
+    "value": 24999397.0
+   },
+   {
+    "ocid": "ocds-5whusi-40269",
+    "award_id": "20210317110836-15886",
+    "field": "award_amount",
+    "value": 19679926.0
+   },
+   {
+    "ocid": "ocds-5whusi-43578",
+    "award_id": "20250205150126-25102",
+    "field": "award_amount",
+    "value": 19668031.0
+   }
+  ]
+ },
+ {
+  "flag_id": "flag_1869396bbf8e",
+  "created_at": "2026-10-10 22:00:42.353752",
+  "run_id": "run_20261010_220028_7932",
+  "ocid": "ocds-5whusi-1177969",
+  "rule": "detect_splitting",
+  "severity": "high",
+  "explanation": "3 awards from Makueni County Government to DOUBLE KEY SYSTEMS LTD within 13 days, each just below KES 5,000,000, totalling KES 11,859,448 (2.37x the threshold)",
+  "status": "pending_review",
+  "evidence": [
+   {
+    "ocid": "ocds-5whusi-1177969",
+    "award_id": "20250205150309-43082",
+    "field": "award_amount",
+    "value": 4761539.0
+   },
+   {
+    "ocid": "ocds-5whusi-1177969",
+    "award_id": "20250205150309-43082",
+    "field": "contract_date_signed",
+    "value": "2023-03-23"
+   },
+   {
+    "ocid": "ocds-5whusi-1212735",
+    "award_id": "20250205150330-52396",
+    "field": "award_amount",
+    "value": 3499126.0
+   },
+   {
+    "ocid": "ocds-5whusi-1212735",
+    "award_id": "20250205150330-52396",
+    "field": "contract_date_signed",
+    "value": "2023-04-03"
+   },
+   {
+    "ocid": "ocds-5whusi-1223916-2022/2023",
+    "award_id": "20250205150317-42727",
+    "field": "award_amount",
+    "value": 3598783.2
+   },
+   {
+    "ocid": "ocds-5whusi-1223916-2022/2023",
+    "award_id": "20250205150317-42727",
+    "field": "contract_date_signed",
+    "value": "2023-04-05"
+   }
+  ]
+ },
+ {
+  "flag_id": "flag_68b151e133f8",
+  "created_at": "2026-10-10 22:00:42.411962",
+  "run_id": "run_20261010_220028_7932",
+  "ocid": "ocds-5whusi-1370851",
+  "rule": "detect_splitting",
+  "severity": "medium",
+  "explanation": "3 awards from Makueni County Government to VIVIFY1 SPACE LIMITED within 0 days, each just below KES 5,000,000, totalling KES 9,812,108 (1.96x the threshold)",
+  "status": "pending_review",
+  "evidence": [
+   {
+    "ocid": "ocds-5whusi-1370851",
+    "award_id": "20240701114937-90406",
+    "field": "award_amount",
+    "value": 3274497.68
+   },
+   {
+    "ocid": "ocds-5whusi-1370851",
+    "award_id": "20240701114937-90406",
+    "field": "contract_date_signed",
+    "value": "2024-01-08"
+   },
+   {
+    "ocid": "ocds-5whusi-1376731-2023/2024",
+    "award_id": "20240704151103-91339",
+    "field": "award_amount",
+    "value": 3274497.68
+   },
+   {
+    "ocid": "ocds-5whusi-1376731-2023/2024",
+    "award_id": "20240704151103-91339",
+    "field": "contract_date_signed",
+    "value": "2024-01-08"
+   },
+   {
+    "ocid": "ocds-5whusi-1376731-2023/2024",
+    "award_id": "20240704154013-91351",
+    "field": "award_amount",
+    "value": 3263112.28
+   },
+   {
+    "ocid": "ocds-5whusi-1376731-2023/2024",
+    "award_id": "20240704154013-91351",
+    "field": "contract_date_signed",
+    "value": "2024-01-08"
+   }
+  ]
+ },
+ {
+  "flag_id": "flag_58d1084e7cdb",
+  "created_at": "2026-10-10 22:00:42.479496",
+  "run_id": "run_20261010_220028_7932",
+  "ocid": "ocds-5whusi-220647-1655874/2024/2025",
+  "rule": "detect_splitting",
+  "severity": "high",
+  "explanation": "3 awards from Makueni County Government to JUMUKA TRADERS within 4 days, each just below KES 500,000, totalling KES 1,052,120 (2.1x the threshold)",
+  "status": "pending_review",
+  "evidence": [
+   {
+    "ocid": "ocds-5whusi-220647-1655874/2024/2025",
+    "award_id": "20250114112111-112725",
+    "field": "award_amount",
+    "value": 313820.0
+   },
+   {
+    "ocid": "ocds-5whusi-220647-1655874/2024/2025",
+    "award_id": "20250114112111-112725",
+    "field": "contract_date_signed",
+    "value": "2024-10-14"
+   },
+   {
+    "ocid": "ocds-5whusi-220629-1656108/2024/2025",
+    "award_id": "20250114101846-112699",
+    "field": "award_amount",
+    "value": 368500.0
+   },
+   {
+    "ocid": "ocds-5whusi-220629-1656108/2024/2025",
+    "award_id": "20250114101846-112699",
+    "field": "contract_date_signed",
+    "value": "2024-10-18"
+   },
+   {
+    "ocid": "ocds-5whusi-220666-1656109/2024/2025",
+    "award_id": "20250114120130-112738",
+    "field": "award_amount",
+    "value": 369800.0
+   },
+   {
+    "ocid": "ocds-5whusi-220666-1656109/2024/2025",
+    "award_id": "20250114120130-112738",
+    "field": "contract_date_signed",
+    "value": "2024-10-18"
+   }
+  ]
+ },
+ {
+  "flag_id": "flag_37f23b738b1d",
+  "created_at": "2026-10-10 22:00:42.548537",
+  "run_id": "run_20261010_220028_7932",
+  "ocid": "ocds-5whusi-043/2022/2023",
+  "rule": "detect_splitting",
+  "severity": "medium",
+  "explanation": "3 awards from Makueni County Government to WAVECREST LIMITED within 23 days, each just below KES 500,000, totalling KES 987,070 (1.97x the threshold)",
+  "status": "pending_review",
+  "evidence": [
+   {
+    "ocid": "ocds-5whusi-043/2022/2023",
+    "award_id": "20250205150331-52488",
+    "field": "award_amount",
+    "value": 385058.14
+   },
+   {
+    "ocid": "ocds-5whusi-043/2022/2023",
+    "award_id": "20250205150331-52488",
+    "field": "contract_date_signed",
+    "value": "2023-01-31"
+   },
+   {
+    "ocid": "ocds-5whusi-307A(1)/2022/2023",
+    "award_id": "20250205150331-52493",
+    "field": "award_amount",
+    "value": 296087.25
+   },
+   {
+    "ocid": "ocds-5whusi-307A(1)/2022/2023",
+    "award_id": "20250205150331-52493",
+    "field": "contract_date_signed",
+    "value": "2023-02-07"
+   },
+   {
+    "ocid": "ocds-5whusi-GMC/GVN/Q/022/2022/2023",
+    "award_id": "20250205150330-52114",
+    "field": "award_amount",
+    "value": 305924.76
+   },
+   {
+    "ocid": "ocds-5whusi-GMC/GVN/Q/022/2022/2023",
+    "award_id": "20250205150330-52114",
+    "field": "contract_date_signed",
+    "value": "2023-02-23"
+   }
+  ]
+ }
+]

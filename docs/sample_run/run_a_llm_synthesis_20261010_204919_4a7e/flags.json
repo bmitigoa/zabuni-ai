@@ -1,0 +1,194 @@
+[
+ {
+  "flag_id": "flag_a6b46397c8ba",
+  "created_at": "2026-10-10 20:49:48.751963",
+  "run_id": "run_20261010_204919_4a7e",
+  "ocid": "ocds-5whusi-1177969",
+  "rule": "detect_splitting",
+  "severity": "high",
+  "explanation": "Three Makueni County awards to DOUBLE KEY SYSTEMS LTD within 13 days, each just under KES 5,000,000, totalling KES 11,859,448, about 2.37x the threshold.",
+  "status": "pending_review",
+  "evidence": [
+   {
+    "ocid": "ocds-5whusi-1177969",
+    "award_id": "20250205150309-43082",
+    "field": "award_amount",
+    "value": 4761539.0
+   },
+   {
+    "ocid": "ocds-5whusi-1177969",
+    "award_id": "20250205150309-43082",
+    "field": "contract_date_signed",
+    "value": "2023-03-23"
+   },
+   {
+    "ocid": "ocds-5whusi-1212735",
+    "award_id": "20250205150330-52396",
+    "field": "award_amount",
+    "value": 3499126.0
+   },
+   {
+    "ocid": "ocds-5whusi-1212735",
+    "award_id": "20250205150330-52396",
+    "field": "contract_date_signed",
+    "value": "2023-04-03"
+   },
+   {
+    "ocid": "ocds-5whusi-1223916-2022/2023",
+    "award_id": "20250205150317-42727",
+    "field": "award_amount",
+    "value": 3598783.2
+   },
+   {
+    "ocid": "ocds-5whusi-1223916-2022/2023",
+    "award_id": "20250205150317-42727",
+    "field": "contract_date_signed",
+    "value": "2023-04-05"
+   }
+  ]
+ },
+ {
+  "flag_id": "flag_c6452ce7831e",
+  "created_at": "2026-10-10 20:49:48.835037",
+  "run_id": "run_20261010_204919_4a7e",
+  "ocid": "ocds-5whusi-220647-1655874/2024/2025",
+  "rule": "detect_splitting",
+  "severity": "high",
+  "explanation": "Three Makueni County awards to JUMUKA TRADERS within 4 days, each just under KES 500,000, totalling KES 1,052,120, about 2.1x the threshold.",
+  "status": "pending_review",
+  "evidence": [
+   {
+    "ocid": "ocds-5whusi-220647-1655874/2024/2025",
+    "award_id": "20250114112111-112725",
+    "field": "award_amount",
+    "value": 313820.0
+   },
+   {
+    "ocid": "ocds-5whusi-220647-1655874/2024/2025",
+    "award_id": "20250114112111-112725",
+    "field": "contract_date_signed",
+    "value": "2024-10-14"
+   },
+   {
+    "ocid": "ocds-5whusi-220629-1656108/2024/2025",
+    "award_id": "20250114101846-112699",
+    "field": "award_amount",
+    "value": 368500.0
+   },
+   {
+    "ocid": "ocds-5whusi-220629-1656108/2024/2025",
+    "award_id": "20250114101846-112699",
+    "field": "contract_date_signed",
+    "value": "2024-10-18"
+   },
+   {
+    "ocid": "ocds-5whusi-220666-1656109/2024/2025",
+    "award_id": "20250114120130-112738",
+    "field": "award_amount",
+    "value": 369800.0
+   },
+   {
+    "ocid": "ocds-5whusi-220666-1656109/2024/2025",
+    "award_id": "20250114120130-112738",
+    "field": "contract_date_signed",
+    "value": "2024-10-18"
+   }
+  ]
+ },
+ {
+  "flag_id": "flag_c2f973ceb60c",
+  "created_at": "2026-10-10 20:49:48.901957",
+  "run_id": "run_20261010_204919_4a7e",
+  "ocid": "ocds-5whusi-1370851",
+  "rule": "detect_splitting",
+  "severity": "medium",
+  "explanation": "Three Makueni County awards to VIVIFY1 SPACE LIMITED on the same day, each just under KES 5,000,000, totalling KES 9,812,108, about 1.96x the threshold.",
+  "status": "pending_review",
+  "evidence": [
+   {
+    "ocid": "ocds-5whusi-1370851",
+    "award_id": "20240701114937-90406",
+    "field": "award_amount",
+    "value": 3274497.68
+   },
+   {
+    "ocid": "ocds-5whusi-1370851",
+    "award_id": "20240701114937-90406",
+    "field": "contract_date_signed",
+    "value": "2024-01-08"
+   },
+   {
+    "ocid": "ocds-5whusi-1376731-2023/2024",
+    "award_id": "20240704151103-91339",
+    "field": "award_amount",
+    "value": 3274497.68
+   },
+   {
+    "ocid": "ocds-5whusi-1376731-2023/2024",
+    "award_id": "20240704151103-91339",
+    "field": "contract_date_signed",
+    "value": "2024-01-08"
+   },
+   {
+    "ocid": "ocds-5whusi-1376731-2023/2024",
+    "award_id": "20240704154013-91351",
+    "field": "award_amount",
+    "value": 3263112.28
+   },
+   {
+    "ocid": "ocds-5whusi-1376731-2023/2024",
+    "award_id": "20240704154013-91351",
+    "field": "contract_date_signed",
+    "value": "2024-01-08"
+   }
+  ]
+ },
+ {
+  "flag_id": "flag_f549f8370d3f",
+  "created_at": "2026-10-10 20:49:48.967119",
+  "run_id": "run_20261010_204919_4a7e",
+  "ocid": "ocds-5whusi-043/2022/2023",
+  "rule": "detect_splitting",
+  "severity": "medium",
+  "explanation": "Three Makueni County awards to WAVECREST LIMITED within 23 days, each just under KES 500,000, totalling KES 987,070, about 1.97x the threshold.",
+  "status": "pending_review",
+  "evidence": [
+   {
+    "ocid": "ocds-5whusi-043/2022/2023",
+    "award_id": "20250205150331-52488",
+    "field": "award_amount",
+    "value": 385058.14
+   },
+   {
+    "ocid": "ocds-5whusi-043/2022/2023",
+    "award_id": "20250205150331-52488",
+    "field": "contract_date_signed",
+    "value": "2023-01-31"
+   },
+   {
+    "ocid": "ocds-5whusi-307A(1)/2022/2023",
+    "award_id": "20250205150331-52493",
+    "field": "award_amount",
+    "value": 296087.25
+   },
+   {
+    "ocid": "ocds-5whusi-307A(1)/2022/2023",
+    "award_id": "20250205150331-52493",
+    "field": "contract_date_signed",
+    "value": "2023-02-07"
+   },
+   {
+    "ocid": "ocds-5whusi-GMC/GVN/Q/022/2022/2023",
+    "award_id": "20250205150330-52114",
+    "field": "award_amount",
+    "value": 305924.76
+   },
+   {
+    "ocid": "ocds-5whusi-GMC/GVN/Q/022/2022/2023",
+    "award_id": "20250205150330-52114",
+    "field": "contract_date_signed",
+    "value": "2023-02-23"
+   }
+  ]
+ }
+]
