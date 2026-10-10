@@ -15,7 +15,7 @@ from typing import Any
 
 from agent.audit import AuditLog
 from agent.graph import new_run_id, run_agent
-from agent.llm import create_llm
+from agent.llm import LLMError, create_llm
 from agent.mcp_client import McpBackend, ToolCallFailed
 from agent.nodes import AgentContext
 from agent.report import build_summary_md
@@ -92,7 +92,15 @@ async def amain(argv: list[str] | None = None) -> int:
         ctx = AgentContext(backend=backend, llm=llm, audit=audit, rules=rules, tools=tools)
         print(f"Run {run_id} | model {llm.name} | servers {backend.servers} | step cap {rules['agent']['max_steps']}")
         print(f"Request: {args.query}")
-        state = await run_agent(ctx, args.query)
+        try:
+            state = await run_agent(ctx, args.query)
+        except LLMError as exc:                           # a model/provider problem: say what to do, no traceback
+            print(f"\nRun failed: {exc}", file=sys.stderr)
+            if settings.provider == "ollama" and "Connect" in str(exc):
+                print(f"Is Ollama running at {settings.ollama_base_url}? Start it and run `ollama pull {settings.model}`.",
+                      file=sys.stderr)
+            print(f"The audit log up to the failure is in {settings.logs_dir}.", file=sys.stderr)
+            return 1
         run = {"model": llm.name, "llm_calls": llm.calls, "tokens": llm.tokens, "tool_calls": ctx.calls,
                "seconds": time.time() - started}
         print("\nRESULT")

@@ -26,7 +26,7 @@ py -3.12 -m venv .venv312
 .venv312/Scripts/python data/loader.py          # builds data/zabuni.duckdb (about 10 s)
 cp .env.example .env                            # then put your GROQ_API_KEY in .env
 .venv312/Scripts/python -m agent.models         # lists the models YOUR key can use (a documented model may be unavailable)
-.venv312/Scripts/python -m pytest               # 140 tests; a live LLM smoke test runs only if a Groq key is configured
+.venv312/Scripts/python -m pytest               # 141 tests; the last is a live LLM smoke test that needs a Groq key and skips (not fails) on a provider limit
 ```
 
 **Python version.** Deployment is pinned to **Python 3.12** (`runtime.txt`, read by Heroku/Render-style builds); the full
