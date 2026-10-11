@@ -25,10 +25,11 @@ class Budget:
         return cls(int(agent_cfg["max_steps"]), int(agent_cfg["max_total_tokens"]), int(agent_cfg["synth_reserve_tokens"]),
                    calls, tokens)
 
-    def stop_reason(self, *, keep_reserve: bool = True) -> str | None:
-        """Why the run must stop investigating now, or None. With `keep_reserve` the Synthesiser's tokens are protected."""
+    def stop_reason(self, *, keep_reserve: bool = True, count_calls: bool = True) -> str | None:
+        """Why the run must stop investigating now, or None. With `keep_reserve` the Synthesiser's tokens are protected.
+        The Synthesiser passes `count_calls=False`: storing the flags it accepted must not cancel the summary."""
         calls, tokens = self.calls(), self.tokens()
-        if calls >= self.max_calls:
+        if count_calls and calls >= self.max_calls:
             return f"tool-call budget reached ({calls} of {self.max_calls} calls)"
         limit = self.max_tokens - (self.synth_reserve if keep_reserve else 0)
         if tokens >= limit:

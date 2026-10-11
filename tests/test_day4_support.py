@@ -135,6 +135,7 @@ def test_the_budget_stops_on_tool_calls_or_tokens_and_keeps_a_reserve_for_the_su
     assert b.stop_reason(keep_reserve=False) is not None
     state.update(tokens=0, calls=3)
     assert "tool-call budget" in b.stop_reason()
+    assert b.stop_reason(count_calls=False) is None                                             # the summary ignores the call cap
     assert "not evidence that none exists" in b.memo_notice("x") and b.memo_notice(None) is None
 
 

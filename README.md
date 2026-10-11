@@ -87,17 +87,18 @@ arguments; **langchain-groq** / **langchain-ollama** for open-weights models; py
 ## 8. Agent architecture
 ```
                        tools discovered with list_tools (names + descriptions + schemas): none are hard-coded
-  request ──> PLANNER ──────────────> INVESTIGATOR ─────────────────> SYNTHESISER ──> human_review ──> END
-              LLM builds a            runs one queued step per visit;   ranks candidate flags, applies the   (Day 4: interrupt,
-              structured plan         loops while steps remain          CITATION GUARD, stores each accepted   approve / reject /
-              (tool + args + why)       |                               flag with flag_finding, drafts a      clarify + reason)
-                                        +-- follow-up: add steps        summary
-                                        +-- recovery: widen and retry
-                                        +-- correction: LLM fixes bad args (once)
-                                        +-- step cap: stop, say so
+  request ──> PLANNER ──────────────> INVESTIGATOR ─────────────────> SYNTHESISER ──> human_review ──> memo ──> END
+              LLM builds a            runs one queued step per visit;   ranks candidate flags, applies the   INTERRUPT: approve /   approved
+              structured plan         loops while steps remain          CITATION GUARD, stores each accepted   reject / clarify,      flags
+              (tool + args + why)       |                               flag with flag_finding, drafts a      reason required          only
+                                        +-- follow-up: add steps        summary                                    ^        |
+                                        +-- recovery: widen and retry                                        clarify <--------+ (agent re-investigates,
+                                        +-- correction: LLM fixes bad args (once)                                                 then pauses again)
+                                        +-- budget / step cap: stop, say so
 ```
-Files: `agent/graph.py` (the graph), `agent/nodes.py` (the nodes), `agent/policy.py` (pure decision logic),
-`agent/discovery.py`, `agent/mcp_client.py`, `agent/llm.py`, `agent/audit.py`, `agent/state.py`, `agent/report.py`, `agent/run.py`.
+Files: `agent/graph.py` (the graph and checkpointer), `agent/nodes.py` (the nodes), `agent/policy.py` (pure decision logic),
+`agent/discovery.py`, `agent/mcp_client.py`, `agent/llm.py`, `agent/usage.py` (token/cost ledger), `agent/budget.py`, `agent/audit.py`,
+`agent/state.py`, `agent/report.py`, `agent/session.py`, `agent/run.py` (start a run), `agent/review.py` (review CLI), `agent/demo_guard.py`.
 
 * **Planner.** One LLM call returns a structured plan (objective, scope = buyer and years, and steps of tool + arguments +
   reason) from a catalogue built from `list_tools`. Unknown tools are rejected (it re-plans once). The planned buyer and years
@@ -115,8 +116,11 @@ Files: `agent/graph.py` (the graph), `agent/nodes.py` (the nodes), `agent/policy
   tool evidence supports; accepted findings take their evidence from tool results, never from model text, and a candidate the
   model drops or mangles is kept with the tool's own wording, so a model cannot hide a flag or invent one. Each accepted finding
   is stored with `flag_finding` (status `pending_review`), which independently rejects missing or non-existent citations.
-* **Human review (placeholder).** `human_review` is where Day 4's approve / reject / clarify interrupt goes; until then every
-  flag stays pending and the draft is labelled "pending human review". The agent recommends and awards nothing.
+* **Human review and memo.** `human_review` is a LangGraph `interrupt` backed by a SQLite checkpointer (see section 11); `clarify`
+  re-investigates a queried flag; `memo` drafts the evaluation memo from approved flags. The agent recommends and awards nothing.
+* **Budget and resilience.** A run is bounded by `agent.max_steps` tool calls and `agent.max_total_tokens` LLM tokens (rules); a stop is
+  recorded and repeated in the memo. LLM 429s are retried with backoff, then fall back to a second open-weights model; a dead MCP
+  server is restarted once and the call retried; failures are written to the audit log, not swallowed (`agent/llm.py`, `agent/mcp_client.py`).
 
 **Why this is an agent, not a pipeline.** The tool sequence and arguments come from a model reading the live tool catalogue;
 the graph branches on what each result says (flagged, too few comparables, error); a tool added to the server is planned and
@@ -170,7 +174,7 @@ Tests: `tests/test_tools.py`, `test_tool_flags.py`, `test_flag_finding.py`, `tes
 docstrings, no magic numbers, `norm()`), `test_server_stdio.py` (real MCP over a subprocess), and the agent tests below.
 
 ## 10. MCP tools / servers
-**Custom server `zabuni-mcp`:** five read-only analysis tools and one write tool.
+**Custom server `zabuni-mcp`:** six read-only analysis tools and five write/review tools.
 
 | Tool | What it does |
 |---|---|
@@ -179,8 +183,15 @@ docstrings, no magic numbers, `norm()`), `test_server_stdio.py` (real MCP over a
 | `detect_splitting` | Clusters of awards from one buyer to one supplier inside a short window, each just below a threshold, totalling above it |
 | `detect_noncompetitive_method` | Buyer's share of direct + restricted procurement vs the national baseline (replaces the single-bidder check the data cannot support) |
 | `supplier_concentration` | Each supplier's share of a buyer's awards by count and value, plus HHI |
-| `flag_finding` (**write**) | Stores a flag with status `pending_review`; **rejects** a flag with no evidence, a citation that does not exist in the data, or an unknown rule/severity |
-| `draft_eval_memo` | *Day 4:* draft the evaluation memo from human-approved flags only |
+| `detect_price_anomalies` | Isolation Forest (fixed seed) on award amounts within category and buyer-type cohorts; high-side outliers with "3.2x median of 47 comparable awards" and the nearest comparables cited |
+| `flag_finding` (**write**) | Stores a flag with status `pending_review`; **rejects** a flag with no evidence, a citation that does not exist in the data, or an unknown rule/severity; a flag a reviewer rejected earlier is returned as `rejected`, not re-raised |
+| `record_decision` (**write**) | Stores a reviewer's approve / reject / clarify with a required reason and a role (append-only); only the approval gate calls it |
+| `attach_clarification` (**write**) | Attaches the agent's answer (and any new, verified evidence) to a flag that a reviewer queried, and returns it to review |
+| `list_flags` | Lists stored flags with evidence, decisions and clarification history |
+| `draft_eval_memo` (**write**) | Builds the evaluation memo from **approved** flags only, with cited ocids, decisions and reasons, data limitations and the no-award statement; the Filesystem MCP server saves it |
+
+The planner is shown only the read-only analysis tools; the write and review tools carry a *role* in their metadata and are found
+by role, so the agent cannot be talked into approving its own flags.
 
 Rules, thresholds, fields used and sources for each tool: [`docs/red_flags.md`](docs/red_flags.md). Checks the data cannot
 support (award-vs-tender gap, single bidder, bidding window) are documented there as dropped.

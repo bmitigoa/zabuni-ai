@@ -265,8 +265,9 @@ async def synthesiser(state: AgentState, ctx: AgentContext) -> dict[str, Any]:
     notes = list(state.get("notes", []))
     stop_reasons = list(state.get("stop_reasons") or [])
     if candidates:
-        if ctx.budget.stop_reason(keep_reserve=False):                        # out of tokens: use the tools' own wording
-            reason = ctx.budget.stop_reason(keep_reserve=False)
+        out_of_tokens = ctx.budget.stop_reason(keep_reserve=False, count_calls=False)
+        if out_of_tokens:                                                       # out of tokens: use the tools' own wording
+            reason = out_of_tokens
             ctx.audit.event("synth_skipped", reason=reason)
             stop_reasons = _stop(state, reason)
             notes.append(f"The LLM summary was skipped ({reason}); the tools' own wording was used.")

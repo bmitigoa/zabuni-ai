@@ -1,11 +1,12 @@
 """Empirical model check: which open-weights model on Groq plans most reliably for THIS agent?
 
-    python -m evals.model_check [model ...] [--runs N]
+    python -m evals.model_check [model ...] [--runs N] [--provider groq|ollama]
 
 Runs the real Planner prompt against the real tool catalogue (discovered over MCP) N times per query and model, with a
 SINGLE attempt per call (no retries), and scores every plan: valid structure, valid tool names, schema-valid arguments,
 buyer and years extracted correctly, no invented ocid/award_id, and the requested checks present. It is a real run:
-results are whatever the models returned, written to docs/sample_run/model_check.md.
+results are whatever the models returned. Groq results go to docs/sample_run/model_check.md (hand-assembled record; the
+harness never overwrites it: it writes model_check_groq_latest.md) and Ollama results to model_check_ollama.md.
 """
 from __future__ import annotations
 
@@ -27,7 +28,8 @@ from agent.settings import ROOT, load_settings
 from agent.state import Plan
 
 DEFAULT_MODELS = ["qwen/qwen3.8-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b"]
-OUT_FILE = ROOT / "docs" / "sample_run" / "model_check.md"
+DEFAULT_OLLAMA_MODEL = "qwen2.5:7b"
+OUT_DIR = ROOT / "docs" / "sample_run"
 RATE_LIMIT_WAIT_S = 20
 MAX_RATE_LIMIT_WAITS = 3
 
@@ -71,10 +73,11 @@ def score(plan: Plan, tools: list[Any], buyer: str, years: list[int], must_cover
     }
 
 
-async def run_model(model: str, backend: McpBackend, tools: list[Any], rules: dict[str, Any], runs: int) -> dict[str, Any]:
-    llm = create_llm(dataclasses.replace(load_settings(), provider="groq", model=model), rules)
-    llm.max_retries = 0                                            # one attempt: measure raw reliability
-    user_tail = f"\n\nTool catalogue:\n{catalogue(tools)}"
+async def run_model(model: str, provider: str, tools: list[Any], rules: dict[str, Any], runs: int) -> dict[str, Any]:
+    llm = create_llm(dataclasses.replace(load_settings(), provider=provider, model=model), rules)
+    llm.chain = llm.chain[:1]                                      # measure this model alone: no fallback
+    llm.chain[0].max_retries = 0                                   # one attempt: measure raw reliability
+    user_tail = f"\n\nTools:\n{catalogue(tools, int(rules['agent']['catalogue_brief_chars']))}"
     records: list[dict[str, Any]] = []
     for query, buyer, years, cover in CASES:
         for i in range(runs):
@@ -82,7 +85,7 @@ async def run_model(model: str, backend: McpBackend, tools: list[Any], rules: di
             while True:
                 started = time.time()
                 try:
-                    plan = await llm.structured(Plan, PLANNER_SYSTEM, f"Request: {query}{user_tail}")
+                    plan = await llm.structured(Plan, PLANNER_SYSTEM, f"Request: {query}{user_tail}", kind="plan")
                     rec = {"query": query, "ok": True, "seconds": time.time() - started, **score(plan, tools, buyer, years, cover)}
                     rec["plan_steps"] = len(plan.steps)
                     break
@@ -99,10 +102,10 @@ async def run_model(model: str, backend: McpBackend, tools: list[Any], rules: di
     return {"model": model, "records": records, "tokens": llm.tokens, "calls": llm.calls}
 
 
-def render(results: list[dict[str, Any]], runs: int) -> str:
+def render(results: list[dict[str, Any]], runs: int, provider: str) -> str:
     keys = ["ok", "tool_names_valid", "args_schema_valid", "args_carry_scope", "scope_buyer_ok", "scope_years_ok",
             "no_invented_ids", "covers_requested"]
-    lines = ["# Model check: planning reliability on Groq (real run)", "",
+    lines = [f"# Model check: planning reliability on {provider} (real run, {time.strftime('%d %b %Y')})", "",
              f"Planner prompt + the real tool catalogue (discovered over MCP), {len(CASES)} requests x {runs} runs per model, "
              "a **single attempt** per call (no retries). Each cell is passes / runs. Produced by `python -m evals.model_check`.", "",
              "| model | " + " | ".join(keys) + " | median s | tokens/run |", "|---|" + "---|" * (len(keys) + 2)]
@@ -132,27 +135,32 @@ def notes_section(available: list[str], runs: int) -> str:
     return "\n".join(lines) + "\n"
 
 
-async def amain(models: list[str], runs: int) -> None:
+async def amain(models: list[str], runs: int, provider: str) -> None:
     settings = load_settings()
     async with McpBackend(settings, use_filesystem=False) as backend:
         rules = await backend.read_resource_json("rules://ppada")
         tools = planning_tools(await backend.tools())
-        results = [await run_model(m, backend, tools, rules, runs) for m in models]
-    from groq import Groq
-    available = sorted(m.id for m in Groq(api_key=settings.groq_api_key).models.list().data)
-    text = render(results, runs) + notes_section(available, runs)
-    OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    OUT_FILE.write_text(text, encoding="utf-8")
+        results = [await run_model(m, provider, tools, rules, runs) for m in models]
+    text = render(results, runs, provider)
+    if provider == "groq":
+        from groq import Groq
+        available = sorted(m.id for m in Groq(api_key=settings.groq_api_key).models.list().data)
+        text += notes_section(available, runs)
+    out = OUT_DIR / ("model_check_groq_latest.md" if provider == "groq" else "model_check_ollama.md")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text, encoding="utf-8")
     print("\n" + text)
     (ROOT / "logs").mkdir(exist_ok=True)
-    (ROOT / "logs" / "model_check.json").write_text(json.dumps(results, indent=1, default=str), encoding="utf-8")
+    (ROOT / "logs" / f"model_check_{provider}.json").write_text(json.dumps(results, indent=1, default=str), encoding="utf-8")
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("models", nargs="*", default=DEFAULT_MODELS)
+    ap.add_argument("models", nargs="*")
     ap.add_argument("--runs", type=int, default=4)
+    ap.add_argument("--provider", choices=["groq", "ollama"], default="groq")
     a = ap.parse_args()
+    a.models = a.models or (DEFAULT_MODELS if a.provider == "groq" else [DEFAULT_OLLAMA_MODEL])
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
-    asyncio.run(amain(a.models, a.runs))
+    asyncio.run(amain(a.models, a.runs, a.provider))
