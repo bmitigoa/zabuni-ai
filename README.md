@@ -27,7 +27,7 @@ py -3.12 -m venv .venv312
 cp .env.example .env                            # then put your GROQ_API_KEY in .env
 .venv312/Scripts/python -m agent.models         # lists the models YOUR key can use (a documented model may be unavailable)
 .venv312/Scripts/python -m streamlit run app/streamlit_app.py     # the web app (see Usage)
-.venv312/Scripts/python -m pytest               # 242 tests; one live LLM smoke test needs a Groq key and skips (not fails) on a provider limit (set ZABUNI_SKIP_LIVE=1 to skip it)
+.venv312/Scripts/python -m pytest               # 251 tests; one live LLM smoke test needs a Groq key and skips (not fails) on a provider limit (set ZABUNI_SKIP_LIVE=1 to skip it)
 ```
 
 **Python version.** Deployment is pinned to **Python 3.12** (`runtime.txt`, read by Heroku/Render-style builds); the full

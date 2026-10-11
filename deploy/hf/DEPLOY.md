@@ -13,27 +13,28 @@ The PPRA Kenya OCDS snapshot stays in a **private Hugging Face dataset**, `bmiti
 
 ## 1. Account, private dataset, tokens, Space (browser + terminal)
 1. Sign in at <https://huggingface.co>.
-2. **Upload the snapshot to a private dataset** (terminal, project folder):
-```bash
-.venv312/Scripts/pip install -U huggingface_hub
-.venv312/Scripts/hf auth login                      # paste a WRITE token (https://huggingface.co/settings/tokens)
-.venv312/Scripts/hf repo create bmitigoa/zabuni-ocds-snapshot --repo-type dataset --private
-.venv312/Scripts/hf upload bmitigoa/zabuni-ocds-snapshot data/raw/full.jsonl.gz full.jsonl.gz --repo-type dataset
-sha256sum data/raw/full.jsonl.gz                    # must print the value above
+2. **Upload the snapshot to a private dataset.** Open **PowerShell** in the project folder (`C:\Projects\zabuni-ai`). All commands use the project's Python 3.12 environment; `huggingface_hub` is already in `requirements.txt`, so the `hf` program is `.\.venv312\Scripts\hf.exe`.
+```powershell
+.\.venv312\Scripts\hf.exe auth login                # paste a WRITE token from https://huggingface.co/settings/tokens
+.\.venv312\Scripts\hf.exe repos create bmitigoa/zabuni-ocds-snapshot --repo-type dataset --private
+.\.venv312\Scripts\hf.exe upload bmitigoa/zabuni-ocds-snapshot data\raw\full.jsonl.gz full.jsonl.gz --repo-type dataset
+(Get-FileHash -Algorithm SHA256 data\raw\full.jsonl.gz).Hash.ToLower()    # must print the value above exactly
 ```
+   (`hf repos create` is the command in `huggingface_hub` 2.x; an older `hf repo create` no longer exists. In Git Bash use forward slashes, `.venv312/Scripts/hf.exe`, and `sha256sum data/raw/full.jsonl.gz` instead of `Get-FileHash`. The upload is about 43 MB; if it is interrupted, run the same command again.)
+   Optional check (needs the read token from step 3): `$env:HF_TOKEN = "<read token>"; .\.venv312\Scripts\python.exe deploy\fetch_snapshot.py` downloads the private copy to `data\raw\full.jsonl.gz` and prints `Snapshot verified (SHA-256 ...)`. Close the PowerShell window afterwards so the token is not left in the session.
 3. **Create a read-only token for the build:** <https://huggingface.co/settings/tokens> -> *Create new token* -> **Fine-grained** -> under Repositories add
    `bmitigoa/zabuni-ocds-snapshot` with **Read** only -> name it `zabuni-space-build`. Copy it once.
 4. **New Space** (<https://huggingface.co/new-space>): name `zabuni-ai`, MIT, **SDK: Docker -> Blank**, CPU basic (free), **Public**.
 5. Space -> **Settings -> Variables and secrets**: secrets `GROQ_API_KEY` (from your local `.env`) and **`HF_TOKEN`** (the read-only token from step 3; the build reads it as a build-time secret, it is not baked into the image); variable `DEMO_VIDEO_URL` (later).
 
 ## 2. Stage and push the code (the Space repo is now tiny, about 0.3 MB)
-```bash
-.venv312/Scripts/python deploy/hf/prepare_space.py           # build/space: code + data/snapshot.sha256, NO data file
-.venv312/Scripts/hf upload bmitigoa/zabuni-ai build/space . --repo-type=space --commit-message "Deploy Zabuni AI demo"
+```powershell
+.\.venv312\Scripts\python.exe deploy\hf\prepare_space.py     # build\space: code + data\snapshot.sha256, NO data file
+.\.venv312\Scripts\hf.exe upload bmitigoa/zabuni-ai build\space . --repo-type space --commit-message "Deploy Zabuni AI demo"
 ```
-(Use your own Space name if different.) The challenge repository stays <https://github.com/bmitigoa/zabuni-ai>; do not push the staged folder there.
+(Use your own Space name if different. You can also create the Space from the terminal instead of the browser: `.\.venv312\Scripts\hf.exe repos create bmitigoa/zabuni-ai --repo-type space --space-sdk docker`; the secrets in step 1.5 still have to be added in the Space settings page.) The challenge repository stays <https://github.com/bmitigoa/zabuni-ai>; do not push the staged folder there.
 
-If the build fails with `Snapshot fetch failed:` the message says which of these it is: no `HF_TOKEN` secret; the token lacks read access to the dataset; the file name is not exactly `full.jsonl.gz`; or **the SHA-256 differs** (then the wrong file was uploaded: re-upload `data/raw/full.jsonl.gz` from this machine).
+If the build fails with `Snapshot fetch failed:` the message says which of these it is: no `HF_TOKEN` secret; the token lacks read access to the dataset; the file name is not exactly `full.jsonl.gz`; or **the SHA-256 differs** (then the wrong file was uploaded: re-run the upload command of step 1.2 with `data\raw\full.jsonl.gz` from this machine and check `Get-FileHash` again).
 
 ## 3. Wait for the build
 Space page -> **Logs**. The image build takes about 5-10 minutes (pip install, npm install of the Filesystem server, loading the snapshot into DuckDB). Status goes
