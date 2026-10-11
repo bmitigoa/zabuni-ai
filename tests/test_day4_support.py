@@ -21,7 +21,7 @@ from agent.policy import compact_result, prune_unknown_args
 from agent.settings import Settings
 from agent.usage import UsageLedger, parse_quota_report, price_usd
 from mcp_server.rules import load_rules
-from tests.test_agent_support import Mini, ScriptedChat, ok, run, sleeps  # noqa: F401  (sleeps is a fixture)
+from tests.test_agent_support import Mini, ScriptedChat, bad, ok, run, sleeps  # noqa: F401  (sleeps is a fixture)
 
 RULES = load_rules()
 QUOTA_429 = ("RateLimitError: Error code: 429 - Rate limit reached for model `m` in organization `org_abc123` on tokens per day "
@@ -298,3 +298,30 @@ def test_tool_results_are_compacted_before_an_llm_sees_them():
     c = compact_result(out)
     assert c["n_evidence"] == 40 and len(c["flags"]) == 5 and c["ocids"] == ["ocds-0", "ocds-1", "ocds-2"]
     assert "awards" not in json.dumps(c) and len(json.dumps(c)) < 300
+
+
+def test_a_per_minute_limit_is_not_recorded_as_the_daily_quota(tmp_path, sleeps):
+    """Found in the web app: a 429 about tokens per MINUTE (Limit 7000) must not pass for the daily quota."""
+    minute = "RateLimitError: 429 on tokens per minute (TPM): Limit 7000, Used 5775, Requested 2147. Please try again in 3s."
+    ledger = UsageLedger(tmp_path / "u.jsonl")
+    llm = ChatLLM(ScriptedChat([Exception(minute), ok(2)]), "groq:qwen/qwen3.8-27b", max_retries=2, backoff_base_s=0.01, rules=RULES, ledger=ledger)
+    assert run(llm.structured(Mini, "s", "u")).x == 2
+    assert ledger.remaining(RULES, "groq", "qwen/qwen3.8-27b") == RULES["agent"]["groq_daily_token_limits"]["qwen/qwen3.8-27b"] - 7
+    assert not [r for r in ledger._read() if r["type"] == "quota_report"]
+
+
+# ----------------------------------------------------------------------------- unusable output falls back for that call only
+def test_unusable_output_tries_the_next_model_for_that_call_without_demoting_the_primary(sleeps):
+    from agent.llm import LLMFormatError
+    llm = chain([bad(), bad(), bad()], [ok(5)])                 # model0: three invalid replies (max_retries=2 -> 3 attempts); model1 is fine
+    assert run(llm.structured(Mini, "s", "u")).x == 5
+    assert llm.index == 0                                         # not sticky: the next call goes to the primary again
+    llm.chain[0].chat.outcomes = [ok(9)]
+    assert run(llm.structured(Mini, "s", "u")).x == 9
+
+
+def test_when_no_model_produces_usable_output_the_error_says_so(sleeps):
+    from agent.llm import LLMFormatError
+    llm = chain([bad()] * 3, [bad()] * 3)
+    with pytest.raises(LLMFormatError, match="No configured model produced usable output"):
+        run(llm.structured(Mini, "s", "u"))

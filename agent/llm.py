@@ -40,6 +40,11 @@ class LLMError(RuntimeError):
     """The model could not produce valid output after the allowed retries."""
 
 
+class LLMFormatError(LLMError):
+    """The model kept returning output that could not be used (a malformed tool call, a schema mismatch) through every retry.
+    Another model may do better, so the fallback chain moves on; a quota error is a different failure (see LLMQuotaError)."""
+
+
 class LLMQuotaError(LLMError):
     """The provider's rate limit or quota stopped this model. Waiting is pointless; another model may still work."""
 
@@ -115,10 +120,12 @@ class ChatLLM:
         report = parse_quota_report(message)
         if report is None:
             return
-        if self.ledger is not None:
+        daily = any(m in message.lower() for m in DAILY_LIMIT_MARKERS)
+        if self.ledger is not None and daily:                # a per-minute figure (Limit 7000) must not pass for the daily quota
             self.ledger.record_quota_report(provider=self.provider, model=self.model, limit=report["limit"], used=report["used"])
         if self.audit is not None:
-            self.audit.event("quota_report", model=self.name, **report, source="provider 429 message")
+            self.audit.event("quota_report", model=self.name, **report, window="day" if daily else "minute",
+                             source="provider 429 message")
 
     # ----------------------------------------------------------------- the call
     async def structured(self, schema: type[T], system: str, user: str, kind: str = "llm") -> T:
@@ -164,7 +171,7 @@ class ChatLLM:
                                                  "Reply again with output that matches the schema exactly."))
         if rate_limited:
             raise LLMQuotaError(f"{self.name}: still rate limited after {self.max_retries + 1} attempts ({redact(last)[:200]}).")
-        raise LLMError(f"LLM failed after {self.max_retries + 1} attempts ({self.name}): {redact(last)}")
+        raise LLMFormatError(f"LLM failed after {self.max_retries + 1} attempts ({self.name}): {redact(last)}")
 
 
 class FallbackLLM:
@@ -203,17 +210,29 @@ class FallbackLLM:
     latency_s = property(lambda self: self._sum("latency_s"))
 
     async def structured(self, schema: type[T], system: str, user: str, kind: str = "llm") -> T:
+        """Ask the current model; on a quota error move to the next model for the rest of the run (sticky); on a format error
+        (unusable output through every retry) try the next model for THIS call only, so one malformed reply does not demote the
+        primary model for the whole run."""
         reasons: list[str] = []
-        while self.index < len(self.chain):
-            model = self.chain[self.index]
+        quota_failures = 0
+        position = self.index
+        while position < len(self.chain):
+            model = self.chain[position]
             try:
                 return await model.structured(schema, system, user, kind)
-            except LLMQuotaError as exc:
-                reasons.append(f"{model.name}: {exc}")
-                self.index += 1
+            except (LLMQuotaError, LLMFormatError) as exc:
+                reasons.append(f"{model.name}: {str(exc)[:200]}")
+                is_quota = isinstance(exc, LLMQuotaError)
+                quota_failures += is_quota
+                position += 1
+                if is_quota:
+                    self.index = position
                 if model.audit is not None:
-                    nxt = self.chain[self.index].name if self.index < len(self.chain) else None
-                    model.audit.event("llm_fallback", from_model=model.name, to_model=nxt, reason=redact(str(exc))[:300])
+                    nxt = self.chain[position].name if position < len(self.chain) else None
+                    model.audit.event("llm_fallback", from_model=model.name, to_model=nxt, reason=redact(str(exc))[:300],
+                                      cause="quota" if is_quota else "unusable output", sticky=is_quota)
+        if not quota_failures:                       # nobody ran out of quota: the models could not produce usable output
+            raise LLMFormatError("No configured model produced usable output: " + " | ".join(reasons))
         raise LLMQuotaExhausted("Every configured model is out of quota or rate limited: " + " | ".join(reasons)
                                 + " Retry after the quota resets, or switch provider (LLM_PROVIDER=ollama runs locally).")
 

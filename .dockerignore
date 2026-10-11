@@ -1,0 +1,16 @@
+.git
+.venv
+.venv312
+**/__pycache__
+.pytest_cache
+.env
+CLAUDE.md
+docs/daily
+logs
+outputs
+build
+data/*.duckdb
+data/*.sqlite
+data/app
+data/dev_backup*
+tests

@@ -38,7 +38,7 @@ Use only the candidates and notes given; mention an ocid only if it is listed fo
 
 CLARIFY_PLAN_SYSTEM = """A reviewer questioned a flag. Plan at most {n} tool steps from the list that could answer the question (reuse the flag's buyer, supplier and years). Each step: tool, arguments as a JSON string, a reason of at most 12 words. If no tool can help, return no steps."""
 
-CLARIFY_ANSWER_SYSTEM = """Answer the reviewer's question in at most 60 words using ONLY the tool results given. If they do not answer it, say what was and was not found. Mention an ocid only if it is listed. No recommendations."""
+CLARIFY_ANSWER_SYSTEM = """Answer the reviewer's question in at most 60 words using ONLY the tool results given. Comparable awards come from all buyers unless a result says otherwise: never say "by this buyer" unless it does. If the results do not answer the question, say what was and was not found. Mention an ocid only if it is listed. No recommendations."""
 
 
 @dataclass

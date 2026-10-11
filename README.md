@@ -26,6 +26,7 @@ py -3.12 -m venv .venv312
 .venv312/Scripts/python data/loader.py          # builds data/zabuni.duckdb (about 10 s)
 cp .env.example .env                            # then put your GROQ_API_KEY in .env
 .venv312/Scripts/python -m agent.models         # lists the models YOUR key can use (a documented model may be unavailable)
+.venv312/Scripts/python -m streamlit run app/streamlit_app.py     # the web app (see Usage)
 .venv312/Scripts/python -m pytest               # 213 tests; one live LLM smoke test needs a Groq key and skips (not fails) on a provider limit (set ZABUNI_SKIP_LIVE=1 to skip it)
 ```
 
@@ -33,15 +34,40 @@ cp .env.example .env                            # then put your GROQ_API_KEY in 
 suite passes on 3.12.10. Hugging Face Spaces selects Python through `python_version` in the Space's README header; that
 will be set and verified on Day 5. A clean-clone install is still to be tested on Day 6.
 
+**Hosted deployment (Hugging Face Spaces, Docker).** The root `Dockerfile` builds Python 3.12 + Node 20, installs the pinned Filesystem MCP server, builds
+the DuckDB from the frozen snapshot at *build* time (about 20 s) and serves the app on port 7860 with `LLM_PROVIDER=groq`. `GROQ_API_KEY` is a Space
+**secret**, never part of the image. `python deploy/hf/prepare_space.py` stages the Space repository (code + the snapshot stored with Git LFS);
+`deploy/hf/DEPLOY.md` lists every step that needs your Hugging Face login. The Space is a deployment artefact: this GitHub repository remains the source.
+
 **The Filesystem MCP server** is fetched by `npx` on first use (`@modelcontextprotocol/server-filesystem`, pinned to
 version 2026.8.31 in `agent/settings.py`), so the first agent run needs network access to the npm registry.
 
 ## 6. Usage
+### Web app (local or hosted)
+```bash
+.venv312/Scripts/python -m streamlit run app/streamlit_app.py        # http://localhost:8501
+```
+**Hosted demo:** _link coming after the Space is created_ (see `deploy/hf/DEPLOY.md`); recorded demo video: _link on Day 7_.
+
+1. **Ask.** Fill in a buyer, a supplier and/or years (or click an example) and optionally what to look for. A request with none of the three is
+   *not run*: the app and the agent ask for a scope, because every tool would otherwise scan all of Kenya.
+2. **Watch.** The plan, every tool call (name, arguments, duration), follow-ups, recoveries, model fallbacks and budget stops appear live.
+3. **Read the risk board.** One card per flag (at most 10 per run, strongest first): severity, explanation and the cited OCDS records; each
+   `ocid` links to the stored record (`?record=<ocid>`).
+4. **Review.** Approve, reject or clarify each flag with a mandatory reason, as a role (names are never recorded). *Clarify* resumes the agent on that
+   flag; its answer appears on the card and you decide again. Flags left undecided stay pending and are not in the memo.
+5. **Memo.** The memo (approved flags only) is shown with the run's tokens, tool calls and estimated cost, and can be downloaded as Markdown or PDF.
+
+A banner states on every page that the tool never recommends or awards a tender. When the free-tier quota is used the app says so and points to the
+recorded demo video; each visitor is limited to 3 live runs per hour and has a private flags database (`agent/demo_guard.py`, `app/engine.py`).
+
+### Command line
 Local development, evals and repeat runs use **Ollama** (`LLM_PROVIDER=ollama`, `MODEL=qwen2.5:7b`: free, no quota). Groq is for
 the hosted demo, the demo video and the final sample run.
 ```bash
 ollama pull qwen2.5:7b                                   # once
 .venv312/Scripts/python -m agent.run "Investigate Makueni County Government 2022-2024"      # plan, investigate, pause at the gate
+.venv312/Scripts/python -m agent.run "awards to one supplier" --supplier "Wavecrest Limited"  # --buyer / --supplier / --years give the scope explicitly
 .venv312/Scripts/python -m agent.review <run_id> --role internal_auditor                    # approve / reject / clarify, each with a reason
 ```
 `agent.run` prints the **plan** (built from the tools it discovered on the server), every **tool call** with timing, any
@@ -71,12 +97,17 @@ exists"), and the flags found so far still go to review.
 **Cost.** Ollama costs nothing. For Groq the log shows tokens and an *estimated* pay-as-you-go cost per call and per run, from the
 price list in `rules.py` (labelled with its retrieval date, 11 Oct 2026). The free tier itself costs nothing.
 
-**Free-tier rate limits and fallback.** Groq's free tier allows `qwen/qwen3.8-27b` 1,000 output tokens per minute and 200,000 tokens
-per day (a rolling window). The agent caps each reply, honours the provider's "try again in N s" hint with exponential backoff,
-and on a daily-quota error **falls back to a second open-weights model on Groq** (`openai/gpt-oss-120b`, which has its own quota); if that
-is also exhausted it **stops cleanly** with a message that names `LLM_PROVIDER=ollama` as the alternative. The estimated remaining
-daily quota is logged with every call. The hosted demo (`agent/demo_guard.py`) limits live runs per visitor per hour and shows a
-"daily quota reached, see the recorded demo video" message instead of failing.
+**Free-tier rate limits and fallback.** Groq's free tier limits `qwen/qwen3.8-27b` to about 200,000 tokens per day (a rolling window) and,
+as observed on 11 Oct 2026, 7,000 tokens per minute. The agent caps each reply, honours the provider's "try again in N s" hint with exponential
+backoff, and on a daily-quota error **falls back to a second open-weights model on Groq** (`openai/gpt-oss-120b`, which has its own quota); if that
+is also exhausted it **stops cleanly** with a message that names `LLM_PROVIDER=ollama` as the alternative. A model that keeps returning unusable
+output (seen once with Qwen: a malformed tool call five times in a row) is retried on the fallback model *for that call only*. The estimated remaining
+daily quota is logged with every call; a per-minute figure is never mistaken for the daily one.
+
+**Why the fallback is `gpt-oss-120b`.** The challenge names the Qwen, Llama, Gemma, Mistral and Aya families. On 12 Oct 2026 `python -m agent.models` showed that this
+project's Groq key can call only one chat model from those families (`qwen/qwen3.8-27b`, the primary); its Llama entries are prompt-guard
+classifiers, which cannot chat, and no Gemma, Mistral or Aya model is listed. The only other open-weights chat models available are OpenAI's
+`gpt-oss` family, so `gpt-oss-120b` stays as the fallback and is documented as such. Locally the model is `qwen2.5:7b` (Qwen family).
 
 ## 7. Technology stack
 Python 3.12; **DuckDB** (embedded analytics database) and pandas/numpy; **FastMCP** (MCP Python SDK) for the custom server and
@@ -238,6 +269,14 @@ The agent never recommends or awards a tender; the human decision is the only th
 * **Local model speed and quality.** `qwen2.5:7b` on a laptop without a dedicated GPU generates only a few tokens per second, so a
   run takes minutes, and a 7B model sometimes invents an argument (the agent drops arguments a tool does not declare and logs it) or
   words a finding loosely (the citation guard and the tools' own wording protect against that).
+* **A scoped but broad request is still broad.** "Awards in 2023" is accepted (an oversight body may review a year) and scans every buyer for
+  that year; the flag cap (10 per run, strongest first) bounds the review queue and the memo records the cap. A request with *no* scope is refused.
+  The scope is checked against the request text (a year or name the request does not contain is dropped), so a nickname for a buyer is treated as
+  missing and the user is asked. See `evals/intentional_failure.md` (the "hello" case).
+* **A 7B local model or a free-tier hosted model can fail to follow the output format.** The agent retries, falls back, and otherwise uses the
+  tools' own wording for the summary; flags always keep the tools' text and cited records.
+* **The hosted demo shares one Groq key** (per-minute and per-day limits above): under load a visitor may wait or be told to watch the video.
+  Free CPU Spaces sleep after inactivity and have ephemeral storage.
 * **Review is single-step per flag.** Any one reviewer's decision moves a flag; two-level approval for high-severity flags is not built.
 * **Costs are estimates** from a dated list price, not an invoice.
 See also "Data source & limitations" below.

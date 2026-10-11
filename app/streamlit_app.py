@@ -288,6 +288,7 @@ def main() -> None:
     except SettingsError as exc:
         st.error(f"Configuration error: {exc}")
         return
+    absorb_finished_job()                 # before the sidebar, so its token count is current
     sidebar(rules)
     st.title("Zabuni AI")
     st.caption("Zabuni means tender in Swahili. Value-for-money and integrity screening of published procurement awards.")
