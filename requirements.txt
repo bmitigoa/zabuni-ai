@@ -15,3 +15,4 @@ python-dotenv==1.2.4
 reportlab==5.0.1
 scikit-learn==1.9.1
 streamlit==1.65.0
+huggingface_hub==2.2.0

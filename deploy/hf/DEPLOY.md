@@ -1,43 +1,39 @@
 # Deploying the hosted demo to Hugging Face Spaces (Docker)
 
 What is already done: the `Dockerfile` (Python 3.12 + Node 20 for the Filesystem MCP server), the Streamlit app, and
-`deploy/hf/prepare_space.py`, which stages a clean Space repository (code, Space README header, the frozen OCDS snapshot stored with Git LFS).
-The container builds the DuckDB from the snapshot at build time (about 20 s on a laptop), so it starts in seconds and never downloads
-newer data. **Everything below needs your Hugging Face login; nothing was uploaded for you.**
+`deploy/hf/prepare_space.py`, which stages a clean Space repository (code and the Space README header only). At build time `deploy/fetch_snapshot.py` downloads the frozen
+snapshot from a private dataset, verifies its SHA-256, and the container builds the DuckDB from it (about 20 s), so it starts in seconds and never
+fetches newer data. **Everything below needs your Hugging Face login; nothing was uploaded for you.**
 
-## 0. Check before you publish
-* **Data licence.** The Space repository will contain `data/raw/full.jsonl.gz` (the PPRA Kenya snapshot from the Open Contracting Data
-  Registry, publication 147). Open the publication page <https://data.open-contracting.org/en/publication/147>, read its licence, and
-  confirm redistribution is allowed with attribution (the Space README already credits the source). If you are not sure, keep the Space *private*
-  until you are.
-* The Space README says the model is `qwen/qwen3.8-27b` on Groq. Your Groq key's free-tier limits apply to every visitor.
+## 0. The snapshot is NOT in the Space repository
+The PPRA Kenya OCDS snapshot stays in a **private Hugging Face dataset**, `bmitigoa/zabuni-ocds-snapshot`. The Docker build downloads exactly that file with an
+`HF_TOKEN` secret and accepts it only if its SHA-256 equals the value recorded in this repository (`data/snapshot.sha256`:
+`15547db9302475fcd5e6da7a0402f5c6f2c84f8baf7d1b7c0b5bf69af8074635`, file `full.jsonl.gz`, 42,529,261 bytes). Check that the licence on
+<https://data.open-contracting.org/en/publication/147> allows what you do with the data (the built image still serves award records).
 
-## 1. Account, Space and secret (browser)
-1. Sign in at <https://huggingface.co> (create an account if needed; verify your email).
-2. **New Space** (<https://huggingface.co/new-space>): name `zabuni-ai`, licence MIT, **SDK: Docker -> Blank**, hardware **CPU basic (free)**, visibility Public.
-3. Open the Space -> **Settings -> Variables and secrets**:
-   * **New secret** `GROQ_API_KEY` = the key from your local `.env` (copy it from the file; it is never in the repository or the image).
-   * **New variable** `DEMO_VIDEO_URL` = the unlisted YouTube link (you can add it on Day 7; until then leave it unset and the "recorded demo" button is hidden).
-4. Create an access token with **Write** permission: <https://huggingface.co/settings/tokens> (name it `zabuni-space-push`). You will paste it as the password when pushing, or log in once with the CLI.
-
-## 2. Stage and push (terminal, Windows)
+## 1. Account, private dataset, tokens, Space (browser + terminal)
+1. Sign in at <https://huggingface.co>.
+2. **Upload the snapshot to a private dataset** (terminal, project folder):
 ```bash
-# in the project folder
-.venv312/Scripts/python deploy/hf/prepare_space.py          # creates build/space (about 43 MB, 51 files)
-.venv312/Scripts/pip install -U "huggingface_hub[cli]"
-.venv312/Scripts/hf auth login                              # paste the write token (older versions: huggingface-cli login)
-.venv312/Scripts/hf upload YOUR-USERNAME/zabuni-ai build/space . --repo-type=space --commit-message "Deploy Zabuni AI demo"
+.venv312/Scripts/pip install -U huggingface_hub
+.venv312/Scripts/hf auth login                      # paste a WRITE token (https://huggingface.co/settings/tokens)
+.venv312/Scripts/hf repo create bmitigoa/zabuni-ocds-snapshot --repo-type dataset --private
+.venv312/Scripts/hf upload bmitigoa/zabuni-ocds-snapshot data/raw/full.jsonl.gz full.jsonl.gz --repo-type dataset
+sha256sum data/raw/full.jsonl.gz                    # must print the value above
 ```
-`hf upload` handles the large snapshot for you (no git-lfs needed). If your `hf` version is older, use `huggingface-cli upload` with the same arguments.
+3. **Create a read-only token for the build:** <https://huggingface.co/settings/tokens> -> *Create new token* -> **Fine-grained** -> under Repositories add
+   `bmitigoa/zabuni-ocds-snapshot` with **Read** only -> name it `zabuni-space-build`. Copy it once.
+4. **New Space** (<https://huggingface.co/new-space>): name `zabuni-ai`, MIT, **SDK: Docker -> Blank**, CPU basic (free), **Public**.
+5. Space -> **Settings -> Variables and secrets**: secrets `GROQ_API_KEY` (from your local `.env`) and **`HF_TOKEN`** (the read-only token from step 3; the build reads it as a build-time secret, it is not baked into the image); variable `DEMO_VIDEO_URL` (later).
 
-Alternative with git (needs `git lfs install` once):
+## 2. Stage and push the code (the Space repo is now tiny, about 0.3 MB)
 ```bash
-cd build/space
-git init -b main && git lfs install && git add . && git commit -m "Deploy Zabuni AI demo"
-git remote add space https://huggingface.co/spaces/YOUR-USERNAME/zabuni-ai
-git push space main        # user name = your HF user, password = the write token
+.venv312/Scripts/python deploy/hf/prepare_space.py           # build/space: code + data/snapshot.sha256, NO data file
+.venv312/Scripts/hf upload bmitigoa/zabuni-ai build/space . --repo-type=space --commit-message "Deploy Zabuni AI demo"
 ```
-The Space repository is only a deployment artefact. The challenge repository stays <https://github.com/bmitigoa/zabuni-ai>; do not push the staged folder there.
+(Use your own Space name if different.) The challenge repository stays <https://github.com/bmitigoa/zabuni-ai>; do not push the staged folder there.
+
+If the build fails with `Snapshot fetch failed:` the message says which of these it is: no `HF_TOKEN` secret; the token lacks read access to the dataset; the file name is not exactly `full.jsonl.gz`; or **the SHA-256 differs** (then the wrong file was uploaded: re-upload `data/raw/full.jsonl.gz` from this machine).
 
 ## 3. Wait for the build
 Space page -> **Logs**. The image build takes about 5-10 minutes (pip install, npm install of the Filesystem server, loading the snapshot into DuckDB). Status goes

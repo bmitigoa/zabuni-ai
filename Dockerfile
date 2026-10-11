@@ -2,7 +2,8 @@
 #   docker build -t zabuni-ai .  &&  docker run -p 7860:7860 -e GROQ_API_KEY=... zabuni-ai
 #
 # Python 3.12 runs the agent, the MCP server and the Streamlit app; Node 20 runs the official Filesystem MCP server (npx).
-# The frozen OCDS snapshot (data/raw/full.jsonl.gz) is loaded into DuckDB AT BUILD TIME, so the container starts in seconds
+# The frozen OCDS snapshot is NOT in the repository: the build downloads it from a private HF dataset with the HF_TOKEN secret,
+# checks its SHA-256 against data/snapshot.sha256, and loads it into DuckDB AT BUILD TIME, so the container starts in seconds
 # and never downloads newer data. The Groq key is NOT in the image: it arrives as the GROQ_API_KEY secret at run time.
 
 FROM node:20-slim AS node
@@ -28,7 +29,8 @@ RUN npm install -g --prefix /home/user/.local @modelcontextprotocol/server-files
 COPY --chown=user . .
 
 # Build the analysis database from the frozen snapshot, then drop the raw file from the image
-RUN python data/loader.py && rm -f data/raw/full.jsonl.gz
+RUN --mount=type=secret,id=HF_TOKEN,mode=0444,required=true \
+    python deploy/fetch_snapshot.py && python data/loader.py && rm -f data/raw/full.jsonl.gz
 
 # Non-secret settings; GROQ_API_KEY and DEMO_VIDEO_URL are set as Space secret / variable
 ENV LLM_PROVIDER=groq MODEL=qwen/qwen3.8-27b

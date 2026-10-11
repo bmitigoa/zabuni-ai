@@ -34,10 +34,13 @@ cp .env.example .env                            # then put your GROQ_API_KEY in 
 suite passes on 3.12.10. Hugging Face Spaces selects Python through `python_version` in the Space's README header; that
 will be set and verified on Day 5. A clean-clone install is still to be tested on Day 6.
 
-**Hosted deployment (Hugging Face Spaces, Docker).** The root `Dockerfile` builds Python 3.12 + Node 20, installs the pinned Filesystem MCP server, builds
-the DuckDB from the frozen snapshot at *build* time (about 20 s) and serves the app on port 7860 with `LLM_PROVIDER=groq`. `GROQ_API_KEY` is a Space
-**secret**, never part of the image. `python deploy/hf/prepare_space.py` stages the Space repository (code + the snapshot stored with Git LFS);
-`deploy/hf/DEPLOY.md` lists every step that needs your Hugging Face login. The Space is a deployment artefact: this GitHub repository remains the source.
+**Hosted deployment (Hugging Face Spaces, Docker).** The root `Dockerfile` builds Python 3.12 + Node 20, installs the pinned Filesystem MCP server and serves the
+app on port 7860 with `LLM_PROVIDER=groq`. **The OCDS snapshot is not in the Space repository:** it is stored in a *private* Hugging Face dataset
+(`bmitigoa/zabuni-ocds-snapshot`); the build downloads that file with a read-only `HF_TOKEN` (a Space secret, mounted as a build-time secret and never
+baked into the image), accepts it only if its **SHA-256 equals `data/snapshot.sha256`** (`deploy/fetch_snapshot.py`), loads it into DuckDB (about 20 s) and
+deletes the raw file. `GROQ_API_KEY` is a Space secret too. `python deploy/hf/prepare_space.py` stages the (tiny) Space repository and refuses to
+include the snapshot or any private file; `deploy/hf/DEPLOY.md` lists every step that needs your Hugging Face login. The Space is a deployment artefact:
+this GitHub repository remains the source.
 
 **The Filesystem MCP server** is fetched by `npx` on first use (`@modelcontextprotocol/server-filesystem`, pinned to
 version 2026.8.31 in `agent/settings.py`), so the first agent run needs network access to the npm registry.
