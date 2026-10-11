@@ -145,12 +145,69 @@ def inject_scope(args: dict[str, Any], schema: dict[str, Any], scope: dict[str, 
             injected.append(arg)
 
     put("buyer", (scope.get("buyer") or "").strip() or None)
+    put("supplier", (scope.get("supplier") or "").strip() or None)
     years = sorted(scope.get("years") or [])
     put("years", years or None)
     if years:
         put("date_from", f"{years[0]}-01-01")
         put("date_to", f"{years[-1]}-12-31")
     return out, injected
+
+
+# ----------------------------------------------------------------------------- scope guard and flag cap
+def merge_scope(plan_scope: dict[str, Any], hint: dict[str, Any] | None) -> dict[str, Any]:
+    """The caller's explicit scope (the UI's fields) wins over what the model extracted; blanks are ignored."""
+    out = dict(plan_scope)
+    for key, value in (hint or {}).items():
+        if value not in (None, "", []):
+            out[key] = value
+    return out
+
+
+NAME_TOKEN_MIN_LEN = 3          # shorter words ("of", "co") say nothing about which organisation was meant
+NAME_MATCH_SHARE = 0.5          # at least this share of a scope name's words must appear in the request
+
+
+def _words(text: str) -> list[str]:
+    return [w for w in re.findall(r"[a-z0-9]+", (text or "").lower()) if len(w) >= NAME_TOKEN_MIN_LEN]
+
+
+def ground_scope(scope: dict[str, Any], query: str) -> tuple[dict[str, Any], list[str]]:
+    """Keep only the parts of a model-extracted scope that the request itself supports.
+
+    A small model asked for the scope of "hello" invented the years 2022-2024 and the agent then scanned all of Kenya. A year is
+    kept only if it appears in the request (a range such as 2022-2024 keeps the years between its ends); a buyer or supplier only
+    if at least half of its significant words appear in the request. Returns (grounded scope, names of the parts removed)."""
+    text = (query or "").lower()
+    out, removed = dict(scope), []
+    literal = sorted({int(y) for y in re.findall(r"(?<![0-9])((?:19|20)[0-9]{2})(?![0-9])", text)})
+    years = [y for y in (scope.get("years") or []) if literal and literal[0] <= y <= literal[-1]]
+    if (scope.get("years") or []) and years != list(scope.get("years") or []):
+        removed.append("years")
+    out["years"] = years or None
+    for key in ("buyer", "supplier"):
+        words = _words(scope.get(key) or "")
+        if words and sum(w in text for w in words) / len(words) < NAME_MATCH_SHARE:
+            removed.append(key)
+            out[key] = None
+    return out, removed
+
+
+def has_scope(scope: dict[str, Any]) -> bool:
+    """True when the request names a buyer, a supplier or a period. Without any of them every tool would scan all of Kenya."""
+    return bool((scope.get("buyer") or "").strip() or (scope.get("supplier") or "").strip() or scope.get("years"))
+
+
+def cap_findings(findings: list[dict[str, Any]], severities: list[str], limit: int) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Keep the `limit` strongest findings: higher severity first, then more cited evidence; ties keep their order.
+
+    Returns (kept in strength order, capped). A request that matches thousands of awards can otherwise create dozens of flags
+    nobody can review."""
+    rank = {s: i for i, s in enumerate(severities)}
+    order = sorted(range(len(findings)), key=lambda i: (-rank.get(findings[i]["severity"], 0), -len(findings[i]["evidence"]), i))
+    kept = [findings[i] for i in order[:limit]]
+    capped = [findings[i] for i in order[limit:]]
+    return kept, capped
 
 
 # ----------------------------------------------------------------------------- unknown arguments

@@ -42,7 +42,7 @@ def make_plan(*steps, buyer=BUYER, years=(2022, 2023, 2024)):
                 steps=[PlanStep(tool=t, args=a, reason=f"because {t}") for t, a in steps])
 
 
-def run_scenario(llm, tmp_path, rules_edit=None, connections=None, rules=None):
+def run_scenario(llm, tmp_path, rules_edit=None, connections=None, rules=None, hint=None):
     """Start the real server(s), run the graph with the given fake LLM, return (state, ctx)."""
     async def go():
         settings = Settings(provider="groq", model="fake", logs_dir=tmp_path / "logs", outputs_dir=tmp_path / "outputs")
@@ -53,7 +53,7 @@ def run_scenario(llm, tmp_path, rules_edit=None, connections=None, rules=None):
             audit = AuditLog("run_test", settings.logs_dir, r["agent"]["audit_output_max_chars"])
             backend.audit = audit
             ctx = AgentContext(backend=backend, llm=llm, audit=audit, rules=r, tools=await backend.tools())
-            return await run_agent(ctx, "test request", InMemorySaver()), ctx
+            return await run_agent(ctx, "Review Makueni County Government awards 2022 2023 2024", InMemorySaver(), hint), ctx
     return asyncio.run(go())
 
 
@@ -136,17 +136,17 @@ def test_planner_rejects_unknown_tools_and_replans_once_then_fails_clearly(tmp_p
 
 # ----------------------------------------------------------------------------- follow-up branch
 def test_price_outliers_trigger_splitting_and_concentration_follow_ups_for_that_buyer(tmp_path, isolated_flags_db):
-    # a request with no buyer/years scope: nothing is injected into the search, so it spans the whole dataset
+    # a request scoped only by years (the caller's hint): the search spans every buyer in those years
     llm = FakeLLM({Plan: make_plan(("search_awards", {"title_keyword": "fuel", "sort_by": "largest", "limit": 3}), buyer=None, years=()),
                    SynthOutput: lambda system, user: synth_from_candidates(user)})
-    state, ctx = run_scenario(llm, tmp_path)
+    state, ctx = run_scenario(llm, tmp_path, hint={"years": [2023]})
     tools = [r["tool"] for r in state["results"]]
     assert tools[0] == "search_awards" and tools.count("compute_price_benchmark") == 3          # one price check per award found
     assert "detect_splitting" in tools and "supplier_concentration" in tools                     # triggered by flagged outliers
     follow = [r for r in state["results"] if r["origin"].startswith("follow-up of")]
     assert len(follow) == len(tools) - 1 and not any(r["error"] for r in state["results"])
     kra = next(r for r in state["results"] if r["tool"] == "detect_splitting" and r["args"].get("supplier"))
-    assert "years" not in kra["args"] and kra["args"]["buyer"] == kra["args"]["buyer"].strip()       # no scope -> none to pass on
+    assert kra["args"]["years"] == [2023] and kra["args"]["buyer"] == kra["args"]["buyer"].strip()    # the scope is passed on
     ups = events(tmp_path, "follow_up")
     assert len(ups) == len(follow) and any(u["trigger"] == "compute_price_benchmark" for u in ups)
     assert any("follow-up after" in n for n in state["notes"])

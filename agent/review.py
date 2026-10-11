@@ -68,7 +68,7 @@ async def amain(argv: list[str] | None = None, ask: Callable[[str], str] = input
         print(f"Configuration error: {exc}", file=sys.stderr)
         return 2
     started = time.time()
-    async with open_session(settings, args.run_id, echo=Printer().echo) as s:
+    async with open_session(settings, args.run_id, echo=Printer().echo, resume=True) as s:
         roles, min_reason = s.rules["review"]["roles"], int(s.rules["review"]["min_reason_chars"])
         if args.role not in roles:
             print(f"Unknown role {args.role!r}. Choose one of {roles}.", file=sys.stderr)
@@ -95,7 +95,7 @@ async def amain(argv: list[str] | None = None, ask: Callable[[str], str] = input
         usage = log_run_usage(s, time.time() - started)
         print(f"\nREVIEW COMPLETE. Memo: {state.get('memo_path') or '(not saved)'}")
         print(f"  decisions: {[(d['flag_id'], d['decision']) for d in state.get('decisions', [])]}")
-        print(f"  usage in this session: {usage['tokens']} tokens, est. cost ${usage['cost_usd']:.4f}")
+        print(f"  run total so far: {usage['tokens']} tokens, est. cost ${usage['cost_usd']:.4f}")
     return 0
 
 

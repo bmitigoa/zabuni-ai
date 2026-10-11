@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, AsyncIterator, Callable
 
 from agent.audit import AuditLog
-from agent.graph import sqlite_checkpointer
+from agent.graph import saved_state, sqlite_checkpointer
 from agent.llm import create_llm
 from agent.mcp_client import McpBackend
 from agent.nodes import AgentContext
@@ -40,10 +40,11 @@ def checkpoint_path(rules: dict[str, Any]) -> Path:
 
 @asynccontextmanager
 async def open_session(settings: Settings, run_id: str, echo: Callable[[str, dict[str, Any]], None] | None = None,
-                        max_steps: int | None = None, use_filesystem: bool = True) -> AsyncIterator[Session]:
+                        max_steps: int | None = None, use_filesystem: bool = True, resume: bool = False,
+                        extra_env: dict[str, str] | None = None) -> AsyncIterator[Session]:
     """Open everything a run needs. The Groq key stays in this process: only ZABUNI_* variables reach the MCP server."""
     async with AsyncExitStack() as stack:
-        backend = await stack.enter_async_context(McpBackend(settings, use_filesystem=use_filesystem))
+        backend = await stack.enter_async_context(McpBackend(settings, use_filesystem=use_filesystem, extra_env=extra_env))
         rules = await backend.read_resource_json("rules://ppada")
         if max_steps:
             rules["agent"]["max_steps"] = max_steps
@@ -56,15 +57,23 @@ async def open_session(settings: Settings, run_id: str, echo: Callable[[str, dic
         tools = await backend.tools()
         checkpointer = await stack.enter_async_context(sqlite_checkpointer(checkpoint_path(rules)))
         ctx = AgentContext(backend=backend, llm=llm, audit=audit, rules=rules, tools=tools)
+        if resume:                      # the budget belongs to the RUN: carry its earlier tool calls and tokens into this session
+            prior = await saved_state(ctx, checkpointer) or {}
+            ctx.calls = int(prior.get("steps_done") or 0)
+            ctx.token_base = int(ledger.run_totals(run_id)["total_tokens"])
         yield Session(settings, backend, rules, audit, llm, ledger, ctx, checkpointer)
 
 
 def log_run_usage(s: Session, seconds: float) -> dict[str, Any]:
-    """Write the run's tokens, estimated cost and the estimated remaining daily quota to the audit log; return them."""
+    """Write the RUN's tokens, estimated cost and the estimated remaining daily quota to the audit log; return them.
+
+    Totals come from the usage ledger by run id, so a run that was paused and resumed in another process reports both
+    phases together (`seconds` is this session's only)."""
     provider, _, model = s.llm.name.partition(":")
-    usage = {"model": s.llm.name, "llm_calls": s.llm.calls, "prompt_tokens": s.llm.prompt_tokens,
-             "completion_tokens": s.llm.completion_tokens, "tokens": s.llm.tokens,
-             "cost_usd": round(s.llm.cost_usd, 6), "tool_calls": s.ctx.calls, "seconds": round(seconds, 1),
+    totals = s.ledger.run_totals(s.audit.run_id)
+    usage = {"model": s.llm.name, "llm_calls": totals["llm_calls"], "prompt_tokens": totals["prompt_tokens"],
+             "completion_tokens": totals["completion_tokens"], "tokens": totals["total_tokens"],
+             "cost_usd": round(totals["cost_usd"] or 0.0, 6), "tool_calls": s.ctx.calls, "seconds": round(seconds, 1),
              "remaining_daily_quota_estimate": s.ledger.remaining(s.rules, provider, model)}
     s.audit.event("run_usage", **usage)
     return usage

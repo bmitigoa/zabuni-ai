@@ -30,7 +30,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command
 
 from agent.nodes import (AgentContext, clarify, human_review, investigator, memo, planner, route_after_investigator,
-                         route_after_review, synthesiser)
+                         route_after_planner, route_after_review, synthesiser)
 from agent.state import AgentState
 
 RUN_ID_RANDOM_CHARS = 4
@@ -48,7 +48,7 @@ def build_graph(ctx: AgentContext, checkpointer: Any = None):
                      ("human_review", human_review), ("clarify", clarify), ("memo", memo)):
         g.add_node(name, partial(fn, ctx=ctx))
     g.add_edge(START, "planner")
-    g.add_edge("planner", "investigator")
+    g.add_conditional_edges("planner", route_after_planner, {"investigator": "investigator", "end": END})
     g.add_conditional_edges("investigator", route_after_investigator,
                             {"investigator": "investigator", "synthesiser": "synthesiser"})
     g.add_edge("synthesiser", "human_review")
@@ -78,10 +78,10 @@ def pause_payload(result: dict[str, Any]) -> dict[str, Any] | None:
     return pending[0].value if pending else None
 
 
-async def run_agent(ctx: AgentContext, query: str, checkpointer: Any = None) -> dict[str, Any]:
+async def run_agent(ctx: AgentContext, query: str, checkpointer: Any = None, scope_hint: dict[str, Any] | None = None) -> dict[str, Any]:
     """Run the graph for one request. Returns the state, plus `__interrupt__` when it paused for review."""
     graph = build_graph(ctx, checkpointer)
-    return await graph.ainvoke({"run_id": ctx.audit.run_id, "query": query}, config=_config(ctx))
+    return await graph.ainvoke({"run_id": ctx.audit.run_id, "query": query, "scope_hint": scope_hint}, config=_config(ctx))
 
 
 async def resume_agent(ctx: AgentContext, decisions: list[dict[str, Any]], checkpointer: Any) -> dict[str, Any]:

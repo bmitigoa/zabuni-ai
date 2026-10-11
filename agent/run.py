@@ -58,7 +58,7 @@ class Printer:
             print(f"  (scope added to the {rec['tool']} step: {', '.join(rec['injected'])})", flush=True)
         elif kind == "llm_fallback":
             print(f"  ! MODEL FALLBACK {rec['from_model']} -> {rec['to_model']}: {rec['reason'][:100]}", flush=True)
-        elif kind in ("synth_fallback", "plan_rejected_steps", "args_pruned", "budget_stop", "rejected_flag_suppressed",
+        elif kind in ("synth_fallback", "plan_rejected_steps", "args_pruned", "budget_stop", "rejected_flag_suppressed", "flags_capped", "scope_request",
                       "mcp_reconnect"):
             print(f"  ({kind}: {rec})", flush=True)
 
@@ -69,6 +69,9 @@ async def amain(argv: list[str] | None = None) -> int:
     ap.add_argument("--provider", choices=["groq", "ollama"], help="override LLM_PROVIDER")
     ap.add_argument("--model", help="override MODEL")
     ap.add_argument("--max-steps", type=int, help="override the step cap (rules agent.max_steps)")
+    ap.add_argument("--buyer", help="scope: buyer name (overrides what the model extracts)")
+    ap.add_argument("--supplier", help="scope: supplier name")
+    ap.add_argument("--years", help="scope: years, e.g. 2022,2023")
     ap.add_argument("--no-save", action="store_true", help="do not write the draft summary to outputs/")
     args = ap.parse_args(argv)
     try:
@@ -88,7 +91,9 @@ async def amain(argv: list[str] | None = None) -> int:
               f" | token budget {rules['agent']['max_total_tokens']}")
         print(f"Request: {args.query}")
         try:
-            state = await run_agent(s.ctx, args.query, s.checkpointer)
+            hint = {"buyer": args.buyer, "supplier": args.supplier,
+                    "years": [int(y) for y in args.years.split(",") if y.strip()] if args.years else None}
+            state = await run_agent(s.ctx, args.query, s.checkpointer, hint)
         except LLMError as exc:                           # a model/provider problem: say what to do, no traceback
             usage = log_run_usage(s, time.time() - started)
             print(f"\nRun failed: {exc}", file=sys.stderr)
@@ -98,6 +103,9 @@ async def amain(argv: list[str] | None = None) -> int:
             print(f"Tokens used before the failure: {usage['tokens']}. The audit log is in {settings.logs_dir}.", file=sys.stderr)
             return 1
         usage = log_run_usage(s, time.time() - started)
+        if state.get("scope_request"):
+            print(f"\nSCOPE NEEDED: {state['scope_request']}\n  (no tool was run; {usage['tokens']} tokens used for planning)")
+            return 3
         paused = pause_payload(state)
         print("\nRESULT")
         print(f"  summary: {state.get('summary')}")

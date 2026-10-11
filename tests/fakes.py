@@ -19,6 +19,13 @@ class FakeLLM:
         self.prompts: dict[str, list[tuple[str, str]]] = {}
         self.calls = 0
         self.tokens = 0
+        self.prompt_tokens = self.completion_tokens = 0
+        self.cost_usd = 0.0
+
+    names = ["fake:deterministic"]
+
+    def attach(self, audit=None, ledger=None, run_id=None) -> None:
+        pass
 
     async def structured(self, schema: type[BaseModel], system: str, user: str, kind: str = "llm") -> BaseModel:
         self.calls += 1

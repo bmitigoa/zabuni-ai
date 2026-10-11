@@ -160,6 +160,9 @@ DEFAULT_RULES: dict[str, Any] = {
         "flag_writer_role": "flag_writer",    # role (from tool metadata) of the tool that persists flags
         "synth_max_candidates": 8,            # candidate flags the Synthesiser is asked to word (the rest keep the tool's text)
         # --- run budget (the run stops cleanly and the memo says so)
+        "max_flags_per_run": 10,              # at most this many flags are raised per run: the strongest (severity, then evidence count)
+        "scope_request_message": "This request names no buyer, supplier or period, so every tool would scan all of Kenya. Add a buyer "
+                                 "(for example a county or agency), a supplier or years, and run it again.",
         "max_total_tokens": 25000,            # LLM tokens (prompt + reply) per run; Ollama and Groq alike
         "synth_reserve_tokens": 4000,         # kept back so the Synthesiser can still run when the investigation is cut short
         "max_clarify_tokens": 6000,           # most tokens one clarification round may use
@@ -168,7 +171,11 @@ DEFAULT_RULES: dict[str, Any] = {
         "ollama_num_ctx": 4096,               # context window requested from Ollama (its default may truncate prompts)
         "ollama_keep_alive": "15m",           # keep the local model loaded between calls
         # --- providers, fallback, quota, cost
-        "llm_fallback_models": {"groq": ["openai/gpt-oss-120b"]},   # tried in order on a 429; separate quota per model
+        # Tried in order on a 429; separate quota per model. Checked on 12 Oct 2026 with `python -m agent.models`: the project's
+        # Groq key lists NO Llama, Gemma, Mistral or Aya chat model (only Llama prompt-guard classifiers, which cannot chat), so
+        # the only other open-weights chat models it can call are the gpt-oss family. gpt-oss-120b (open weights, OpenAI) is kept as
+        # the fallback; it is not one of the challenge's named families, which the README documents.
+        "llm_fallback_models": {"groq": ["openai/gpt-oss-120b"]},
         "groq_daily_token_limits": {"qwen/qwen3.8-27b": 200000},      # free tier as observed on 10 Oct 2026 (unknown: not listed)
         "quota_window_hours": 24,             # Groq's daily limit behaves like a rolling window (observed)
         "pricing": {
@@ -189,7 +196,7 @@ DEFAULT_RULES: dict[str, Any] = {
         "memo_writer_role": "memo_writer",
         # Argument NAMES shared by the tools; the Planner's scope (buyer, years) is injected into any step whose schema has
         # them but whose arguments omit them. Agent code never names a tool, only these argument conventions.
-        "scope_args": {"buyer": "buyer", "years": "years", "date_from": "date_from", "date_to": "date_to"},
+        "scope_args": {"buyer": "buyer", "supplier": "supplier", "years": "years", "date_from": "date_from", "date_to": "date_to"},
         "filesystem_write_tool_hint": "write",  # the external server's file-writing tool: name containing this
         # Follow-up policy as DATA (names of tools appear here, not in agent code). A rule applies only if its tool
         # was discovered on the server. Templates: $result.<path>, $args.<path>, $scope.buyer, $scope.years,

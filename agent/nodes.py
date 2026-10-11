@@ -49,7 +49,8 @@ class AgentContext:
     audit: AuditLog
     rules: dict[str, Any]
     tools: list[ToolInfo]                                   # everything discovered on the zabuni server
-    calls: int = 0                                          # tool calls made (step cap)
+    calls: int = 0                                          # tool calls made (step cap); restored from the checkpoint on resume
+    token_base: int = 0                                     # tokens this run already used in earlier sessions (from the ledger)
     by_name: dict[str, ToolInfo] = field(init=False)
 
     def __post_init__(self) -> None:
@@ -65,7 +66,7 @@ class AgentContext:
 
     @property
     def budget(self) -> Budget:
-        return Budget.from_rules(self.cfg, lambda: self.calls, lambda: int(getattr(self.llm, "tokens", 0)))
+        return Budget.from_rules(self.cfg, lambda: self.calls, lambda: self.token_base + int(getattr(self.llm, "tokens", 0)))
 
     def role_tool(self, key: str) -> ToolInfo | None:
         """The discovered tool whose role is configured under rules agent.<key> (no tool name appears in agent code)."""
@@ -117,7 +118,17 @@ async def planner(state: AgentState, ctx: AgentContext) -> dict[str, Any]:
     if not steps or plan is None:
         raise LLMError("The Planner produced no valid steps after a retry.")
     seen: set[str] = set()
-    scope = plan.scope.model_dump()
+    grounded, removed = policy.ground_scope(plan.scope.model_dump(), state["query"])
+    if removed:                                                  # the model invented part of the scope: drop what the request does not say
+        ctx.audit.event("scope_ungrounded", removed=removed, model_scope=plan.scope.model_dump(), query=state["query"])
+    scope = policy.merge_scope(grounded, state.get("scope_hint"))
+    if not policy.has_scope(scope):                        # scope guard: ask instead of scanning all of Kenya
+        message = ctx.cfg["scope_request_message"]
+        ctx.audit.event("scope_request", query=state["query"], message=message)
+        return {"plan": {"objective": plan.objective, "steps": []}, "scope": scope, "queue": [], "scope_request": message,
+                "steps_done": 0, "results": [], "notes": [], "stopped_reason": None, "stop_reasons": [], "decisions": [],
+                "suppressed": [], "clarifications": [], "flags_created": [], "capped": [],
+                "summary": message, "review_status": "needs_scope"}
     for s in steps:
         schema = ctx.by_name[s["tool"]].input_schema
         s["args"], dropped = policy.prune_unknown_args(s["args"], schema)          # a small model may invent an argument
@@ -130,7 +141,12 @@ async def planner(state: AgentState, ctx: AgentContext) -> dict[str, Any]:
     ctx.audit.event("plan", objective=plan.objective, scope=scope, steps=steps, available_tools=sorted(names))
     return {"plan": {"objective": plan.objective, "steps": steps}, "scope": scope, "queue": steps, "seen": sorted(seen),
             "steps_done": 0, "results": [], "notes": [], "stopped_reason": None, "stop_reasons": [], "decisions": [],
-            "suppressed": [], "clarifications": []}
+            "suppressed": [], "clarifications": [], "capped": [], "scope_request": None}
+
+
+def route_after_planner(state: AgentState) -> str:
+    """Conditional edge: a request without scope ends here with a question for the user; otherwise investigate."""
+    return "end" if state.get("scope_request") else "investigator"
 
 
 # ----------------------------------------------------------------------------- Investigator
@@ -296,6 +312,11 @@ async def synthesiser(state: AgentState, ctx: AgentContext) -> dict[str, Any]:
                         draft_rule=d["draft"].get("rule"), draft_explanation=d["draft"].get("explanation", "")[:200])
     created: list[dict[str, Any]] = []
     suppressed: list[dict[str, Any]] = []
+    accepted, capped = policy.cap_findings(accepted, fl["severities"], int(ctx.cfg["max_flags_per_run"]))
+    if capped:
+        ctx.audit.event("flags_capped", kept=len(accepted), capped=len(capped), limit=ctx.cfg["max_flags_per_run"])
+        notes.append(f"Flag cap: {len(capped)} lower-ranked finding(s) were not raised; at most {ctx.cfg['max_flags_per_run']} flags are "
+                     "raised per run (strongest first). Narrow the request to see the rest.")
     writer = ctx.role_tool("flag_writer_role")
     for f in accepted:
         if writer is None:
@@ -323,7 +344,7 @@ async def synthesiser(state: AgentState, ctx: AgentContext) -> dict[str, Any]:
     if suppressed:
         notes.append(f"{len(suppressed)} flag(s) a reviewer rejected earlier were remembered and not raised again.")
     return {"findings": accepted, "dropped": dropped, "flags_created": created, "suppressed": suppressed,
-            "summary": summary, "notes": notes, "stop_reasons": stop_reasons,
+            "summary": summary, "notes": notes, "stop_reasons": stop_reasons, "capped": [c["rule"] + " " + c["explanation"][:80] for c in capped],
             "review_status": "pending_review" if created else "complete"}
 
 
@@ -411,7 +432,10 @@ async def _clarify_one(ctx: AgentContext, state: AgentState, flag: dict[str, Any
     names = {t.name for t in ctx.plannable}
     steps: list[dict[str, Any]] = []
     answer_text, new_evidence, results = "", [], []
+    stop = ctx.budget.stop_reason(keep_reserve=False, count_calls=False)
     try:
+        if stop:
+            raise LLMError(f"run budget: {stop}")
         user = (f"Flag: {flag['rule']} - {flag['explanation'][:300]}\nCited ocids: {flag['ocids'][:5]}\n"
                 f"Scope: buyer={scope.get('buyer')} years={scope.get('years')}\nQuestion: {question}\n\n"
                 f"Tools:\n{catalogue(ctx.plannable, int(ctx.cfg['catalogue_brief_chars']))}")
@@ -487,7 +511,7 @@ async def memo(state: AgentState, ctx: AgentContext) -> dict[str, Any]:
     suppressed = state.get("suppressed", [])
     if suppressed:
         run_notes.append(f"{len(suppressed)} flag(s) rejected by reviewers in earlier runs were remembered and not raised again.")
-    run_notes += [n for n in notes if n.startswith(("The decision", "A decision", "Clarification", "MCP"))][:6]
+    run_notes += [n for n in notes if n.startswith(("The decision", "A decision", "Clarification", "MCP", "Flag cap"))][:6]
     ids = [f["flag_id"] for f in state.get("flags_created", [])]
     try:
         out = await ctx.call_role("memo_writer_role", {"flag_ids": ids, "run_id": ctx.audit.run_id, "run_notes": run_notes,

@@ -42,6 +42,7 @@ class Scope(BaseModel):
     """What the request is about, extracted by the Planner (used by follow-up rules as $scope.buyer / $scope.years)."""
     buyer: str | None = Field(default=None, description="Full buyer name from the request, or null")
     years: list[int] | None = Field(default=None, description="Calendar years covered, e.g. [2022, 2023, 2024], or null")
+    supplier: str | None = Field(default=None, description="Supplier (company) name from the request, or null")
 
 
 class PlanStep(_ArgsAsJson):
@@ -108,6 +109,9 @@ class AgentState(TypedDict, total=False):
     decisions: list[dict[str, Any]]      # every reviewer decision applied in this run
     stop_reasons: list[str]              # why the run stopped early (budget, quota, ...): copied into the memo
     clarifications: list[dict[str, Any]] # re-investigations done for reviewer questions
+    scope_hint: dict[str, Any] | None    # scope given explicitly by the caller (the UI's fields)
+    scope_request: str | None            # set when the request has no buyer, supplier or period: the run stops and asks
+    capped: list[str]                    # findings left out because the per-run flag cap was reached
     memo_id: str | None
     memo_path: str | None
     memo_markdown: str | None

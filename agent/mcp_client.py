@@ -60,9 +60,13 @@ def zabuni_env(environ: dict[str, str] | None = None) -> dict[str, str]:
     return {k: v for k, v in environ.items() if k.startswith(ENV_PREFIX)}
 
 
-def zabuni_connection(environ: dict[str, str] | None = None) -> dict[str, Any]:
+def zabuni_connection(environ: dict[str, str] | None = None, extra_env: dict[str, str] | None = None) -> dict[str, Any]:
+    """stdio connection to zabuni-mcp. `extra_env` (ZABUNI_* keys only) overrides the process environment for THIS connection,
+    which lets the web app give each visitor a private flags database without touching os.environ."""
+    env = zabuni_env(environ)
+    env.update({k: v for k, v in (extra_env or {}).items() if k.startswith(ENV_PREFIX)})
     return {"transport": "stdio", "command": sys.executable, "args": ["-m", "mcp_server.server"],
-            "cwd": str(ROOT), "env": zabuni_env(environ)}
+            "cwd": str(ROOT), "env": env}
 
 
 def filesystem_connection(outputs_dir: Path) -> dict[str, Any]:
@@ -129,17 +133,19 @@ class McpBackend:
 
     def __init__(self, settings: Settings, audit: AuditLog | None = None, use_filesystem: bool = True,
                  connections: dict[str, dict[str, Any]] | None = None, reconnects: int = 1,
-                 runner_factory: Callable[[Any, str], Any] = _ServerRunner) -> None:
+                 runner_factory: Callable[[Any, str], Any] = _ServerRunner,
+                 extra_env: dict[str, str] | None = None) -> None:
         self.settings, self.audit, self.use_filesystem = settings, audit, use_filesystem
         self.tool_timeout_s: float | None = None
         self.reconnects = int(reconnects)
         self._connections = connections
+        self.extra_env = extra_env
         self._runner_factory = runner_factory
         self._runners: dict[str, Any] = {}
         self._tools: dict[str, list[ToolInfo]] = {}
 
     async def __aenter__(self) -> "McpBackend":
-        conns = self._connections or {ZABUNI: zabuni_connection()}
+        conns = self._connections or {ZABUNI: zabuni_connection(extra_env=self.extra_env)}
         if self._connections is None and self.use_filesystem:
             Path(self.settings.outputs_dir).mkdir(parents=True, exist_ok=True)
             conns[FILESYSTEM] = filesystem_connection(self.settings.outputs_dir)

@@ -69,7 +69,7 @@ class Session:
     async def __aexit__(self, *exc):
         await self.backend.__aexit__(*exc)
 
-    async def run(self, query="test request"):
+    async def run(self, query="Review Makueni County Government awards 2022 2023 2024"):
         return await run_agent(self.ctx, query, self.saver)
 
     async def resume(self, decisions):
