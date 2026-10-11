@@ -29,6 +29,7 @@ from typing import Any, Callable
 
 import anyio
 from langchain_mcp_adapters.client import MultiServerMCPClient
+from mcp.shared.exceptions import McpError
 
 from agent.audit import AuditLog
 from agent.discovery import ToolInfo, to_tool_info
@@ -41,6 +42,12 @@ STOP_WAIT_S = 10.0          # how long a server's supervisor task may take to sh
 # Failures that mean "the connection to the server is gone" (as opposed to a tool reporting an error)
 TRANSPORT_ERRORS: tuple[type[BaseException], ...] = (anyio.ClosedResourceError, anyio.BrokenResourceError, anyio.EndOfStream,
                                                      ConnectionError, BrokenPipeError, asyncio.TimeoutError)
+
+
+def is_transport_error(exc: BaseException) -> bool:
+    """True when the failure means the connection to the server is gone (restarting may fix it), not that the tool or the
+    request was wrong. A server process that exits mid-call surfaces as McpError('Connection closed')."""
+    return isinstance(exc, TRANSPORT_ERRORS) or (isinstance(exc, McpError) and "connection closed" in str(exc).lower())
 
 
 class ToolCallFailed(RuntimeError):
@@ -183,7 +190,9 @@ class McpBackend:
                     coro = self._session(server).call_tool(tool, args)
                     res = await (asyncio.wait_for(coro, self.tool_timeout_s) if self.tool_timeout_s else coro)
                     break
-                except TRANSPORT_ERRORS as exc:
+                except Exception as exc:  # noqa: BLE001 - classified below; anything else is re-raised unchanged
+                    if not is_transport_error(exc):
+                        raise
                     reason = f"{type(exc).__name__}: {exc}"
                     if attempt >= self.reconnects:
                         raise ToolCallFailed(f"MCP server '{server}' is unavailable after {attempt} reconnect attempt(s): {reason}") from exc

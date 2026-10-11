@@ -37,28 +37,46 @@ will be set and verified on Day 5. A clean-clone install is still to be tested o
 version 2026.8.31 in `agent/settings.py`), so the first agent run needs network access to the npm registry.
 
 ## 6. Usage
+Local development, evals and repeat runs use **Ollama** (`LLM_PROVIDER=ollama`, `MODEL=qwen2.5:7b`: free, no quota). Groq is for
+the hosted demo, the demo video and the final sample run.
 ```bash
-.venv312/Scripts/python -m agent.run "Investigate Makueni County Government 2022-2024"
+ollama pull qwen2.5:7b                                   # once
+.venv312/Scripts/python -m agent.run "Investigate Makueni County Government 2022-2024"      # plan, investigate, pause at the gate
+.venv312/Scripts/python -m agent.review <run_id> --role internal_auditor                    # approve / reject / clarify, each with a reason
 ```
-It prints the **plan** (built from the tools it discovered on the server), every **tool call** with timing, any
-**follow-ups**, **recoveries** and **corrections**, and the **flags created**, then saves a draft summary to `outputs/`
-through the Filesystem MCP server. Two real runs are recorded in [`docs/sample_run/`](docs/sample_run/) (the audit-log lines of each run, the draft
-summary and the flags created; one includes the console output), with notes on how they differ.
+`agent.run` prints the **plan** (built from the tools it discovered on the server), every **tool call** with timing, any
+**follow-ups**, **recoveries**, **corrections**, **budget stops** and **model fallbacks**, the **flags created**, and the run's
+tokens, estimated cost and estimated remaining daily quota. It then pauses for review. `agent.review` resumes the same run; when
+every flag is decided the memo is written to `outputs/memo_<run_id>.md`. A recorded end-to-end run (with the model used) is in
+[`docs/sample_run/`](docs/sample_run/).
 
 | Where | What |
 |---|---|
 | `logs/tool_calls.jsonl` | every MCP tool call: `run_id`, timestamp, tool, inputs, output summary + output, duration, error |
-| `logs/agent_events.jsonl` | the agent's decisions: plan, follow-ups, recoveries, corrections, scope injections, step cap, citation guard |
-| `data/flags.duckdb` (table `flags`) | flags stored by `flag_finding`, status `pending_review` until a human decides (Day 4) |
-| `outputs/summary_<run_id>.md` | the draft summary (the only directory the Filesystem MCP server may write to) |
+| `logs/agent_events.jsonl` | the agent's decisions: plan, follow-ups, recoveries, corrections, decisions, clarifications, budget stops, model fallbacks, `llm_call` (tokens, cost, remaining quota) and `run_usage` |
+| `logs/llm_usage.jsonl` | one line per LLM call: tokens, estimated cost, seconds (the quota estimate is computed from it) |
+| `data/flags.duckdb` | flags, reviewer decisions (append-only), clarifications and memos |
+| `data/checkpoints.sqlite` | LangGraph checkpoints: the state of paused runs |
+| `outputs/summary_<run_id>.md`, `outputs/memo_<run_id>.md` | the draft summary and the approved-flags memo (the only directory the Filesystem MCP server may write to) |
 
-Useful options: `--max-steps N` (step cap), `--model`, `--provider groq|ollama`, `--no-save`. Other commands:
+Useful options: `--max-steps N` (tool-call cap), `--model`, `--provider groq|ollama`, `--no-save`. Other commands:
 `python -m mcp_server.server` (the MCP server alone), `python -m evals.model_check` (model reliability check),
-`python -m agent.models` (models available to your key).
+`python -m agent.models` (models available to your Groq key).
 
-**Rate limits.** Groq's free tier allows `qwen/qwen3.8-27b` 1,000 output tokens per minute and 200,000 tokens per day. A run
-uses roughly 6-8 thousand tokens. The agent caps each reply, honours the provider's "try again in N s" hint, and **fails
-fast with a clear message on a daily quota** instead of retrying pointlessly.
+**Run budget.** One run may make at most `agent.max_steps` tool calls and use at most `agent.max_total_tokens` LLM tokens (both in
+`rules.py`; 4,000 tokens are held back so the summary can still be written). When a limit is reached the agent stops
+investigating, says so in the draft and in the memo ("the run stopped early ... absence of a finding is not evidence that none
+exists"), and the flags found so far still go to review.
+
+**Cost.** Ollama costs nothing. For Groq the log shows tokens and an *estimated* pay-as-you-go cost per call and per run, from the
+price list in `rules.py` (labelled with its retrieval date, 11 Oct 2026). The free tier itself costs nothing.
+
+**Free-tier rate limits and fallback.** Groq's free tier allows `qwen/qwen3.8-27b` 1,000 output tokens per minute and 200,000 tokens
+per day (a rolling window). The agent caps each reply, honours the provider's "try again in N s" hint with exponential backoff,
+and on a daily-quota error **falls back to a second open-weights model on Groq** (`openai/gpt-oss-120b`, which has its own quota); if that
+is also exhausted it **stops cleanly** with a message that names `LLM_PROVIDER=ollama` as the alternative. The estimated remaining
+daily quota is logged with every call. The hosted demo (`agent/demo_guard.py`) limits live runs per visitor per hour and shows a
+"daily quota reached, see the recorded demo video" message instead of failing.
 
 ## 7. Technology stack
 Python 3.12; **DuckDB** (embedded analytics database) and pandas/numpy; **FastMCP** (MCP Python SDK) for the custom server and
@@ -174,10 +192,44 @@ MCP boundary and is audit-logged like any other call, and we avoid hand-rolling 
 `outputs/` succeeds and a write outside it is refused ("path outside allowed directories").
 
 ## 11. Human-in-the-loop workflow
-Flags are stored as `pending_review`; the Day 4 gate (a LangGraph `interrupt`) lets the reviewer approve, reject or request clarification with a reason before a flag can enter the memo. Today the graph has a clearly marked `human_review` placeholder and every draft is labelled pending human review. The agent never recommends or awards a tender.
+```
+ synthesiser ──> human_review ──(INTERRUPT: run paused, state saved in data/checkpoints.sqlite)
+                      ^   |
+   still undecided ───+   +── reviewer resumes: approve | reject | clarify, each with a reason, recorded by role
+   clarify: agent re-investigates ◄──┘                      |
+   that flag with your question                              v
+   and pauses again                          all decided ──> memo (APPROVED flags only) ──> outputs/memo_<run_id>.md
+```
+1. **Run.** `python -m agent.run "…"` plans, investigates, and ends at the gate: every flag is `pending_review` and the process
+   prints `python -m agent.review <run_id>`. Nothing is in a memo yet. The pause is a LangGraph `interrupt` with a **SQLite
+   checkpointer** (`data/checkpoints.sqlite`, thread id = run id), so the process can exit and the run survives.
+2. **Review.** `python -m agent.review <run_id> --role internal_auditor` lists each pending flag with its explanation and cited
+   OCDS records and asks for a decision. A **reason is required** for every decision (for *clarify*, the reason is your question).
+   Reviewers are recorded by **role** (`procurement_officer`, `internal_auditor`, `committee_member`, `oversight_reviewer`), never by name.
+3. **Clarify.** The flag goes back to the agent with your question; it plans up to two tool calls, answers using only their
+   results (the answer may cite only records the tools returned), attaches the answer to the flag, and the run **pauses again**.
+   A flag can be queried twice, then must be approved or rejected.
+4. **Reject is remembered.** A flag's identity is the rule plus its cited records. A flag a reviewer rejected is not raised
+   again in later runs on the same scope (`rejected_flag_suppressed` in the audit log, and a note in the memo).
+5. **Memo.** When every flag is decided, `draft_eval_memo` (a `zabuni-mcp` tool) builds the memo from **approved flags only**: summary,
+   each finding with its cited `ocid`s, the reviewers' decisions and reasons, the data limitations, how the run ended (budget,
+   quota), and the statement that the memo **does not recommend or award any tender**. The Filesystem MCP server saves it to `outputs/`.
+6. **Stored and logged.** Decisions are append-only rows in `data/flags.duckdb` (`flag_decisions`, `flag_clarifications`, `memos`)
+   and `decision` events in `logs/agent_events.jsonl`. The review tools are not offered to the Planner: only the gate calls them.
+
+The agent never recommends or awards a tender; the human decision is the only thing that moves a flag into the memo.
 
 ## 12. Limitations
-See "Data source & limitations" below; more to be added.
+* **Free-tier quota.** The hosted demo runs on Groq's free tier: about 200,000 tokens per day for the main model, shared by every
+  visitor and by the builder's own testing. A run uses roughly 8-10 thousand tokens, so on a busy day the live demo will refuse new runs
+  ("daily quota reached") until the rolling 24-hour window frees up; the recorded demo video shows a complete run. The remaining-quota
+  figure in the log is an *estimate* from our own ledger (the provider does not report it), corrected whenever a 429 states the real one.
+* **Local model speed and quality.** `qwen2.5:7b` on a laptop without a dedicated GPU generates only a few tokens per second, so a
+  run takes minutes, and a 7B model sometimes invents an argument (the agent drops arguments a tool does not declare and logs it) or
+  words a finding loosely (the citation guard and the tools' own wording protect against that).
+* **Review is single-step per flag.** Any one reviewer's decision moves a flag; two-level approval for high-severity flags is not built.
+* **Costs are estimates** from a dated list price, not an invoice.
+See also "Data source & limitations" below.
 
 ## 13. Future improvements
 _TBD_
