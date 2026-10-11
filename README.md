@@ -27,20 +27,23 @@ py -3.12 -m venv .venv312
 cp .env.example .env                            # then put your GROQ_API_KEY in .env
 .venv312/Scripts/python -m agent.models         # lists the models YOUR key can use (a documented model may be unavailable)
 .venv312/Scripts/python -m streamlit run app/streamlit_app.py     # the web app (see Usage)
-.venv312/Scripts/python -m pytest               # 251 tests; one live LLM smoke test needs a Groq key and skips (not fails) on a provider limit (set ZABUNI_SKIP_LIVE=1 to skip it)
+.venv312/Scripts/python -m pytest               # 266 tests; one live LLM smoke test needs a Groq key and skips (not fails) on a provider limit (set ZABUNI_SKIP_LIVE=1 to skip it)
 ```
 
 **Python version.** Deployment is pinned to **Python 3.12** (`runtime.txt`, read by Heroku/Render-style builds); the full
 suite passes on 3.12.10. Hugging Face Spaces selects Python through `python_version` in the Space's README header; that
 will be set and verified on Day 5. A clean-clone install is still to be tested on Day 6.
 
-**Hosted deployment (Hugging Face Spaces, Docker).** The root `Dockerfile` builds Python 3.12 + Node 20, installs the pinned Filesystem MCP server and serves the
-app on port 7860 with `LLM_PROVIDER=groq`. **The OCDS snapshot is not in the Space repository:** it is stored in a *private* Hugging Face dataset
-(`bmitigoa/zabuni-ocds-snapshot`); the build downloads that file with a read-only `HF_TOKEN` (a Space secret, mounted as a build-time secret and never
-baked into the image), accepts it only if its **SHA-256 equals `data/snapshot.sha256`** (`deploy/fetch_snapshot.py`), loads it into DuckDB (about 20 s) and
-deletes the raw file. `GROQ_API_KEY` is a Space secret too. `python deploy/hf/prepare_space.py` stages the (tiny) Space repository and refuses to
-include the snapshot or any private file; `deploy/hf/DEPLOY.md` lists every step that needs your Hugging Face login. The Space is a deployment artefact:
-this GitHub repository remains the source.
+**Hosted deployment (Streamlit Community Cloud, free).** The app deploys straight from this public repository: entry point `app/streamlit_app.py`, Python 3.12,
+`requirements.txt`, and `packages.txt` (`nodejs`, `npm`) for the official Filesystem MCP server. The server's dependency `minimatch` 10 wants Node 20 or newer, so
+`agent/node_runtime.py` uses the system Node only if it is new enough and otherwise the Node from the pinned pip package `nodejs-wheel-binaries`. **The OCDS snapshot is not in
+any public repository:** it is stored in a *private* Hugging Face dataset (`bmitigoa/zabuni-ocds-snapshot`). On first start the page shows "Preparing data..." while
+`app/bootstrap.py` downloads it with a read-only `HF_TOKEN`, accepts it only if its **SHA-256 equals `data/snapshot.sha256`** (`deploy/fetch_snapshot.py`), builds the DuckDB once
+in a child process (peak about 790 MB) and deletes the raw file. `GROQ_API_KEY` and `HF_TOKEN` come from Streamlit secrets (environment as fallback; `.streamlit/secrets.toml` is
+git-ignored and `.streamlit/secrets.toml.example` shows the shape). `deploy/hf/DEPLOY.md` Part A gives the click-by-click steps for share.streamlit.io.
+
+*Alternative kept for reference:* a Hugging Face **Docker** Space (the root `Dockerfile`, `deploy/hf/prepare_space.py`). It works the same way (build-time download with the same checksum
+check) but Hugging Face charges for Docker Spaces (PRO), so it is not the default; see `DEPLOY.md` Part B.
 
 **The Filesystem MCP server** is fetched by `npx` on first use (`@modelcontextprotocol/server-filesystem`, pinned to
 version 2026.8.31 in `agent/settings.py`), so the first agent run needs network access to the npm registry.
@@ -50,7 +53,7 @@ version 2026.8.31 in `agent/settings.py`), so the first agent run needs network 
 ```bash
 .venv312/Scripts/python -m streamlit run app/streamlit_app.py        # http://localhost:8501
 ```
-**Hosted demo:** _link coming after the Space is created_ (see `deploy/hf/DEPLOY.md`); recorded demo video: _link on Day 7_.
+**Hosted demo:** _link coming after the Streamlit Community Cloud app is created_ (steps in `deploy/hf/DEPLOY.md`, Part A); recorded demo video: _link on Day 7_.
 
 1. **Ask.** Fill in a buyer, a supplier and/or years (or click an example) and optionally what to look for. A request with none of the three is
    *not run*: the app and the agent ask for a scope, because every tool would otherwise scan all of Kenya.
@@ -279,7 +282,7 @@ The agent never recommends or awards a tender; the human decision is the only th
 * **A 7B local model or a free-tier hosted model can fail to follow the output format.** The agent retries, falls back, and otherwise uses the
   tools' own wording for the summary; flags always keep the tools' text and cited records.
 * **The hosted demo shares one Groq key** (per-minute and per-day limits above): under load a visitor may wait or be told to watch the video.
-  Free CPU Spaces sleep after inactivity and have ephemeral storage.
+  Free Streamlit Community Cloud apps sleep after inactivity and have ephemeral storage: a woken app prepares the data again (about a minute) and starts with empty logs and flags.
 * **Review is single-step per flag.** Any one reviewer's decision moves a flag; two-level approval for high-severity flags is not built.
 * **Costs are estimates** from a dated list price, not an invoice.
 See also "Data source & limitations" below.

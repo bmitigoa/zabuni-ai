@@ -235,3 +235,6 @@ docs/daily/
 outputs/
 *.bak
 data/app/
+
+# Streamlit secrets (never commit real values)
+.streamlit/secrets.toml

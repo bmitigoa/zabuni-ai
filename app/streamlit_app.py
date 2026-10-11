@@ -21,7 +21,7 @@ if str(ROOT) not in sys.path:
 
 import streamlit as st  # noqa: E402
 
-from app import engine  # noqa: E402
+from app import bootstrap, engine  # noqa: E402
 from app.memo_pdf import memo_to_pdf  # noqa: E402
 from agent.settings import SettingsError, load_settings  # noqa: E402
 from mcp_server.records import release_record  # noqa: E402
@@ -42,6 +42,37 @@ EXAMPLES = [
     {"label": "One supplier: Wavecrest Limited across buyers", "buyer": "", "supplier": "Wavecrest Limited",
      "years": [], "text": "List this supplier's awards and look for splitting."},
 ]
+
+
+# ----------------------------------------------------------------------------- first start: secrets and data
+def export_secrets() -> None:
+    """Make Streamlit secrets (GROQ_API_KEY, HF_TOKEN, ...) visible to the settings code; the environment still wins."""
+    try:
+        secrets = st.secrets
+        secrets.get("GROQ_API_KEY")               # touching it raises if no secrets file exists (local runs)
+    except Exception:  # noqa: BLE001
+        secrets = None
+    bootstrap.export_secrets_to_env(secrets)
+
+
+@st.cache_resource(show_spinner=False)
+def prepare_data(_progress=None):
+    return bootstrap.ensure_database(_progress)
+
+
+def ensure_data_ready() -> bool:
+    """Show 'Preparing data' while the first start fetches the snapshot and builds the database; False if it failed."""
+    if bootstrap.database_ready():
+        return True
+    with st.status("Preparing data... (first start only, about a minute)", expanded=True) as status:
+        try:
+            prepare_data(lambda message: st.write(message))
+        except Exception as exc:  # noqa: BLE001 - shown to the user; BootstrapError messages never contain a secret
+            status.update(label="The data could not be prepared", state="error")
+            st.error(str(exc))
+            return False
+        status.update(label="Data ready", state="complete", expanded=False)
+    return True
 
 
 # ----------------------------------------------------------------------------- cached resources
@@ -276,6 +307,9 @@ def sidebar(rules: dict) -> None:
 # ----------------------------------------------------------------------------- page
 def main() -> None:
     st.set_page_config(page_title="Zabuni AI", page_icon=":material/balance:", layout="wide")
+    export_secrets()
+    if not ensure_data_ready():
+        return
     ocid = st.query_params.get("record")
     if ocid:
         banner()

@@ -164,3 +164,39 @@ def test_the_record_page_shows_a_stored_award_record():
     page.query_params["record"] = ocid
     page.run()
     assert not page.exception and page.title[0].value == "Stored OCDS record" and page.json
+
+
+# ----------------------------------------------------------------------------- hosted first start
+def test_the_first_start_shows_the_preparing_message_and_then_the_page(monkeypatch, at):
+    from app import bootstrap
+    from streamlit.testing.v1 import AppTest
+    import streamlit as st
+    state = {"ready": False, "calls": 0}
+
+    def ensure(progress=None, **kwargs):
+        state["calls"] += 1
+        progress and progress("Fetching the frozen snapshot from the private dataset (about 43 MB)...")
+        state["ready"] = True
+    monkeypatch.setattr(bootstrap, "database_ready", lambda path=None: state["ready"])
+    monkeypatch.setattr(bootstrap, "ensure_database", ensure)
+    st.cache_resource.clear()
+    page = AppTest.from_file(APP, default_timeout=60)
+    page.run()
+    assert not page.exception and state["calls"] == 1
+    assert any("never recommends or awards a tender" in w.value for w in page.warning)         # the normal page follows the preparation
+
+
+def test_a_failed_preparation_shows_the_error_and_no_form(monkeypatch, at):
+    from app import bootstrap
+    from streamlit.testing.v1 import AppTest
+    import streamlit as st
+
+    def broken(progress=None, **kwargs):
+        raise bootstrap.BootstrapError("The snapshot could not be fetched: No HF_TOKEN: add it as a Space secret")
+    monkeypatch.setattr(bootstrap, "database_ready", lambda path=None: False)
+    monkeypatch.setattr(bootstrap, "ensure_database", broken)
+    st.cache_resource.clear()
+    page = AppTest.from_file(APP, default_timeout=60)
+    page.run()
+    assert not page.exception and any("No HF_TOKEN" in e.value for e in page.error)
+    assert not [b for b in page.button if b.label == "Run investigation"]

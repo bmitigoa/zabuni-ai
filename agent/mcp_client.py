@@ -33,6 +33,7 @@ from mcp.shared.exceptions import McpError
 
 from agent.audit import AuditLog
 from agent.discovery import ToolInfo, to_tool_info
+from agent.node_runtime import find_npx
 from agent.settings import FILESYSTEM_PACKAGE, ROOT, Settings
 
 ZABUNI = "zabuni"
@@ -71,7 +72,7 @@ def zabuni_connection(environ: dict[str, str] | None = None, extra_env: dict[str
 
 def filesystem_connection(outputs_dir: Path) -> dict[str, Any]:
     """npx runs the pinned official server; its single argument is the only directory it may access."""
-    return {"transport": "stdio", "command": shutil.which("npx") or "npx",
+    return {"transport": "stdio", "command": find_npx(),
             "args": ["-y", FILESYSTEM_PACKAGE, str(Path(outputs_dir).resolve())], "env": None}
 
 
