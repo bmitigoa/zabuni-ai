@@ -33,10 +33,14 @@ def test_registered_tools_are_importable_from_the_package_and_wrapped_safely():
     assert "error" in out["result"]
 
 
-def test_exactly_the_non_read_only_tools_declare_a_role():
+def test_every_write_tool_declares_a_role_and_some_tools_stay_plannable():
+    """Writers declare a role (so clients find them by role, not name). Read-only review tools may carry one too
+    (list_flags); the Planner only schedules tools that are read-only AND have no role."""
     writers = [s for s in TOOLS.values() if not s.read_only]
     assert writers, "the server must have at least one non-read-only tool (hard rule 4)"
-    assert all(s.role for s in writers) and not any(s.role for s in TOOLS.values() if s.read_only)
+    assert all(s.role for s in writers)
+    assert [s for s in TOOLS.values() if s.read_only and not s.role], "the Planner needs analysis tools to schedule"
+    assert len({s.role for s in TOOLS.values() if s.role}) == len([s for s in TOOLS.values() if s.role]), "roles must be unique"
 
 
 # ----------------------------------------------------------------------------- docstrings come from rules

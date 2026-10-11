@@ -65,6 +65,15 @@ class ArgsFix(_ArgsAsJson):
     explanation: str = Field(default="", description="What was wrong and what changed")
 
 
+class ClarifyPlan(BaseModel):
+    """Steps that could answer a reviewer's question about one flag (may be empty if no tool can help)."""
+    steps: list[PlanStep] = Field(default_factory=list)
+
+
+class ClarifyAnswer(BaseModel):
+    response: str = Field(description="At most 60 words, using only the tool results given; no recommendations")
+
+
 class FindingDraft(BaseModel):
     candidate_id: str | None = Field(default=None, description="Id of the candidate flag this finding is about")
     rule: str = Field(default="", description="Tool name that produced the evidence (needed only without candidate_id)")
@@ -94,4 +103,11 @@ class AgentState(TypedDict, total=False):
     dropped: list[dict[str, Any]]        # rejected by the citation guard (with reasons)
     flags_created: list[dict[str, Any]]  # what flag_finding stored
     summary: str
-    review_status: str                   # "pending_review" until the Day 4 human gate
+    review_status: str                   # pending_review -> complete -> memo_drafted
+    suppressed: list[dict[str, Any]]     # candidate flags a reviewer rejected earlier (remembered, not re-raised)
+    decisions: list[dict[str, Any]]      # every reviewer decision applied in this run
+    stop_reasons: list[str]              # why the run stopped early (budget, quota, ...): copied into the memo
+    clarifications: list[dict[str, Any]] # re-investigations done for reviewer questions
+    memo_id: str | None
+    memo_path: str | None
+    memo_markdown: str | None

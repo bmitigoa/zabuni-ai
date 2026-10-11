@@ -1,12 +1,16 @@
 """MCP client: one `MultiServerMCPClient` (langchain-mcp-adapters) over stdio to two servers.
 
-(a) `zabuni` - our custom FastMCP server (analysis tools + flag_finding + the two resources).
+(a) `zabuni` - our custom FastMCP server (analysis tools, the write tools and the two resources).
 (b) `filesystem` - the official Filesystem MCP server (@modelcontextprotocol/server-filesystem, run with npx),
     sandboxed to the `outputs/` directory: it refuses every path outside it.
 
 Why borrow the Filesystem server instead of writing files ourselves: path sandboxing and file I/O are solved, widely
 used code maintained by the MCP project; our agent gets a *capability-limited* way to write a draft (one directory),
 and every write crosses the MCP boundary where it is logged like any other tool call. It is a pinned version.
+
+Resilience: each server's session lives in its own supervisor task (`_ServerRunner`), so a server that dies can be
+restarted from any task. A call that fails because the connection died restarts that server once and retries (rules
+`agent.mcp_reconnects`); the restart and any final failure are written to the audit log.
 
 Environment: an MCP stdio client does NOT forward the parent's environment to the server subprocess. We forward only
 `ZABUNI_*` settings (database path, rules override, flags database) and nothing else, so the Groq key never reaches
@@ -20,10 +24,10 @@ import os
 import shutil
 import sys
 import time
-from contextlib import AsyncExitStack
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
+import anyio
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from agent.audit import AuditLog
@@ -33,6 +37,10 @@ from agent.settings import FILESYSTEM_PACKAGE, ROOT, Settings
 ZABUNI = "zabuni"
 FILESYSTEM = "filesystem"
 ENV_PREFIX = "ZABUNI_"
+STOP_WAIT_S = 10.0          # how long a server's supervisor task may take to shut down
+# Failures that mean "the connection to the server is gone" (as opposed to a tool reporting an error)
+TRANSPORT_ERRORS: tuple[type[BaseException], ...] = (anyio.ClosedResourceError, anyio.BrokenResourceError, anyio.EndOfStream,
+                                                     ConnectionError, BrokenPipeError, asyncio.TimeoutError)
 
 
 class ToolCallFailed(RuntimeError):
@@ -67,16 +75,60 @@ def parse_tool_result(res: Any) -> Any:
         return text
 
 
+class _ServerRunner:
+    """Owns one server's MCP session inside its own task. `stop()` then `start()` is a restart, callable from any task
+    (anyio requires a session context to be exited by the task that entered it, which is why it is not shared)."""
+
+    def __init__(self, client: MultiServerMCPClient, name: str) -> None:
+        self.client, self.name = client, name
+        self.session: Any = None
+        self.error: BaseException | None = None
+        self._task: asyncio.Task[None] | None = None
+        self._ready = asyncio.Event()
+        self._stop = asyncio.Event()
+
+    async def start(self) -> None:
+        self.session, self.error = None, None
+        self._ready, self._stop = asyncio.Event(), asyncio.Event()
+        self._task = asyncio.create_task(self._run(), name=f"mcp-{self.name}")
+        await self._ready.wait()
+        if self.error is not None:
+            raise self.error
+
+    async def _run(self) -> None:
+        try:
+            async with self.client.session(self.name) as session:
+                self.session = session
+                self._ready.set()
+                await self._stop.wait()
+        except BaseException as exc:  # noqa: BLE001 - a dying server raises odd exception groups; report, never propagate
+            self.error = exc
+            self._ready.set()
+            if isinstance(exc, asyncio.CancelledError):
+                raise
+
+    async def stop(self) -> None:
+        self._stop.set()
+        if self._task is not None:
+            try:
+                await asyncio.wait_for(asyncio.shield(self._task), STOP_WAIT_S)
+            except BaseException:  # noqa: BLE001 - shutting down a dead server may raise; nothing more to do
+                self._task.cancel()
+        self.session = None
+
+
 class McpBackend:
-    """Async context manager that owns both MCP sessions and logs every call."""
+    """Async context manager that owns the MCP servers, restarts a dead one once, and logs every call."""
 
     def __init__(self, settings: Settings, audit: AuditLog | None = None, use_filesystem: bool = True,
-                 connections: dict[str, dict[str, Any]] | None = None) -> None:
+                 connections: dict[str, dict[str, Any]] | None = None, reconnects: int = 1,
+                 runner_factory: Callable[[Any, str], Any] = _ServerRunner) -> None:
         self.settings, self.audit, self.use_filesystem = settings, audit, use_filesystem
         self.tool_timeout_s: float | None = None
+        self.reconnects = int(reconnects)
         self._connections = connections
-        self._stack = AsyncExitStack()
-        self._sessions: dict[str, Any] = {}
+        self._runner_factory = runner_factory
+        self._runners: dict[str, Any] = {}
         self._tools: dict[str, list[ToolInfo]] = {}
 
     async def __aenter__(self) -> "McpBackend":
@@ -86,41 +138,69 @@ class McpBackend:
             conns[FILESYSTEM] = filesystem_connection(self.settings.outputs_dir)
         client = MultiServerMCPClient(conns)
         for name in conns:
-            self._sessions[name] = await self._stack.enter_async_context(client.session(name))
+            runner = self._runner_factory(client, name)
+            self._runners[name] = runner
+            await runner.start()
         return self
 
     async def __aexit__(self, *exc: Any) -> None:
-        await self._stack.aclose()
+        for runner in self._runners.values():
+            await runner.stop()
 
     @property
     def servers(self) -> list[str]:
-        return list(self._sessions)
+        return list(self._runners)
+
+    def _session(self, server: str) -> Any:
+        return self._runners[server].session
+
+    async def restart(self, server: str) -> None:
+        """Stop and start one server (used when its connection has died)."""
+        runner = self._runners[server]
+        await runner.stop()
+        await runner.start()
 
     async def tools(self, server: str = ZABUNI) -> list[ToolInfo]:
         """list_tools for a server (cached for the run)."""
         if server not in self._tools:
-            listed = await self._sessions[server].list_tools()
+            listed = await self._session(server).list_tools()
             self._tools[server] = [to_tool_info(t, server) for t in listed.tools]
         return self._tools[server]
 
     async def read_resource_json(self, uri: str, server: str = ZABUNI) -> Any:
-        res = await self._sessions[server].read_resource(uri)
+        res = await self._session(server).read_resource(uri)
         return json.loads(res.contents[0].text)
 
     async def call(self, server: str, tool: str, args: dict[str, Any], step: dict[str, Any] | None = None) -> Any:
-        """Call a tool, log it, return its parsed output. Raises ToolCallFailed on transport/protocol errors."""
+        """Call a tool, log it, return its parsed output. A dead connection restarts the server once and retries.
+        Raises ToolCallFailed on transport/protocol errors that survive that."""
         started = time.time()
         output: Any = None
         error: str | None = None
         try:
-            coro = self._sessions[server].call_tool(tool, args)
-            res = await (asyncio.wait_for(coro, self.tool_timeout_s) if self.tool_timeout_s else coro)
+            for attempt in range(self.reconnects + 1):
+                try:
+                    coro = self._session(server).call_tool(tool, args)
+                    res = await (asyncio.wait_for(coro, self.tool_timeout_s) if self.tool_timeout_s else coro)
+                    break
+                except TRANSPORT_ERRORS as exc:
+                    reason = f"{type(exc).__name__}: {exc}"
+                    if attempt >= self.reconnects:
+                        raise ToolCallFailed(f"MCP server '{server}' is unavailable after {attempt} reconnect attempt(s): {reason}") from exc
+                    if self.audit is not None:
+                        self.audit.event("mcp_reconnect", server=server, tool=tool, reason=reason, attempt=attempt + 1)
+                    try:
+                        await self.restart(server)
+                    except Exception as restart_exc:  # noqa: BLE001
+                        raise ToolCallFailed(f"MCP server '{server}' died and could not be restarted: "
+                                             f"{type(restart_exc).__name__}: {restart_exc}") from restart_exc
             output = parse_tool_result(res)
             if res.isError:
                 error = f"tool reported isError: {output if isinstance(output, str) else json.dumps(output)[:300]}"
                 raise ToolCallFailed(error)
             return output
-        except ToolCallFailed:
+        except ToolCallFailed as exc:
+            error = error or str(exc)
             raise
         except Exception as exc:  # noqa: BLE001 - normalise every failure for the caller and the log
             error = f"{type(exc).__name__}: {exc}"
@@ -132,7 +212,7 @@ class McpBackend:
 
     async def save_text(self, filename: str, text: str, hint: str = "write") -> str:
         """Write `text` to outputs/<filename> through the Filesystem MCP server's write tool; returns the path."""
-        if FILESYSTEM not in self._sessions:
+        if FILESYSTEM not in self._runners:
             raise ToolCallFailed("The Filesystem MCP server is not connected (use_filesystem=False).")
         candidates = [t for t in await self.tools(FILESYSTEM) if hint in t.name.lower()]
         if not candidates:

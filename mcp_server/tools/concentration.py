@@ -7,7 +7,7 @@ import pandas as pd
 
 from mcp_server.common import (base_cte, buyer_problem, clean_text, clean_years, envelope, ev, frame, rules, year_filter)
 from mcp_server.registry import tool
-from mcp_server.toolkit import make_flag, ranking_limit, severity_hint
+from mcp_server.toolkit import BuyerArg, LimitArg, YearsArg, make_flag, ranking_limit, severity_hint
 
 PERCENT = 100          # HHI is defined on shares expressed in percent (0-10,000)
 
@@ -28,8 +28,8 @@ def _concentration(sub: pd.DataFrame) -> dict[str, Any]:
 
 
 @tool()
-def supplier_concentration(buyer: str | None = None, years: list[int] | None = None,
-                           limit: int = 10) -> dict[str, Any]:
+def supplier_concentration(buyer: BuyerArg = None, years: YearsArg = None,
+                           limit: LimitArg = 10) -> dict[str, Any]:
     """Show how concentrated a buyer's awards are among suppliers (dependence on one or a few suppliers).
 
     `buyer` is an organisation name that must identify one buyer; omit it to rank buyers (with >=

@@ -8,7 +8,7 @@ import numpy as np
 
 from mcp_server.common import (ToolInputError, base_cte, clean_text, clean_years, envelope, ev, frame, rows, rules)
 from mcp_server.registry import tool
-from mcp_server.toolkit import buyer_types, categories, check_choice, make_flag, severity_hint
+from mcp_server.toolkit import AmountArg, AutoKeywordsArg, AwardIdArg, BuyerTypeArg, CategoryArg, KeywordArg, OcidArg, YearsArg, buyer_types, categories, check_choice, make_flag, severity_hint
 
 QUARTILES = (25, 50, 75)      # the definition of quartiles, not a tunable threshold
 
@@ -24,10 +24,10 @@ def _tokens(title: str | None, pb: dict[str, Any]) -> list[str]:
 
 
 @tool()
-def compute_price_benchmark(title_keyword: str | None = None, ocid: str | None = None, award_id: str | None = None,
-                            category: str | None = None, buyer_type: str | None = None,
-                            years: list[int] | None = None, amount: float | None = None,
-                            auto_keywords: bool = True) -> dict[str, Any]:
+def compute_price_benchmark(title_keyword: KeywordArg = None, ocid: OcidArg = None, award_id: AwardIdArg = None,
+                            category: CategoryArg = None, buyer_type: BuyerTypeArg = None,
+                            years: YearsArg = None, amount: AmountArg = None,
+                            auto_keywords: AutoKeywordsArg = True) -> dict[str, Any]:
     """Benchmark an award's amount against comparable awards (value-for-money / price-outlier check).
 
     Give `ocid` (optionally `award_id`) to test a specific award, or `title_keyword` (and/or `category`) to

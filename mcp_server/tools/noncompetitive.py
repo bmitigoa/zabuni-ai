@@ -7,7 +7,7 @@ import pandas as pd
 
 from mcp_server.common import (base_cte, buyer_problem, clean_text, clean_years, envelope, ev, frame, rules, year_filter)
 from mcp_server.registry import tool
-from mcp_server.toolkit import make_flag, ranking_limit, severity_hint
+from mcp_server.toolkit import BuyerArg, LimitArg, YearsArg, make_flag, ranking_limit, severity_hint
 
 
 def _method_stats(df: pd.DataFrame, direct: list[str], restricted: list[str]) -> dict[str, Any]:
@@ -29,8 +29,8 @@ def _method_stats(df: pd.DataFrame, direct: list[str], restricted: list[str]) ->
 
 
 @tool()
-def detect_noncompetitive_method(buyer: str | None = None, years: list[int] | None = None,
-                                 limit: int = 10) -> dict[str, Any]:
+def detect_noncompetitive_method(buyer: BuyerArg = None, years: YearsArg = None,
+                                 limit: LimitArg = 10) -> dict[str, Any]:
     """Compare a buyer's use of non-open procurement (direct and restricted/selective) with the national baseline.
 
     Substitutes for a single-bidder check, which the data cannot support (no tenderers are published). `buyer` is an

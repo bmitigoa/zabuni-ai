@@ -130,9 +130,12 @@ def test_proprietary_models_are_refused_before_any_client_is_built(model):
 def test_the_default_models_build_without_network_and_respect_the_output_cap():
     rules = load_rules()
     groq = create_llm(Settings(provider="groq", model=DEFAULT_MODELS["groq"], groq_api_key="x"), rules)
-    assert groq.name == f"groq:{DEFAULT_MODELS['groq']}" and groq.chat.max_tokens == rules["agent"]["llm_max_tokens"]
+    assert groq.names == [f"groq:{DEFAULT_MODELS['groq']}", "groq:openai/gpt-oss-120b"]          # primary, then a second quota
+    assert groq.chain[0].chat.max_tokens == rules["agent"]["llm_max_tokens"]
     local = create_llm(Settings(provider="ollama", model=DEFAULT_MODELS["ollama"]), rules)
-    assert local.name == f"ollama:{DEFAULT_MODELS['ollama']}"
+    assert local.names == [f"ollama:{DEFAULT_MODELS['ollama']}"]                                # a local model has no fallback
+    assert local.chain[0].chat.num_ctx == rules["agent"]["ollama_num_ctx"]
+    assert local.chain[0].chat.num_predict == rules["agent"]["llm_max_tokens"]
 
 
 # ----------------------------------------------------------------------------- audit log

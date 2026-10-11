@@ -9,7 +9,7 @@ import pandas as pd
 from mcp_server.common import (ToolInputError, base_cte, buyer_problem, clean_text, clean_years, envelope, ev,
                                evidence_cap, frame, norm, rows, rules, year_filter)
 from mcp_server.registry import tool
-from mcp_server.toolkit import clamp, date_text, make_flag, ranking_limit, severity_hint
+from mcp_server.toolkit import BuyerArg, LimitArg, MinAwardsArg, SupplierArg, ThresholdsArg, WindowArg, YearsArg, clamp, date_text, make_flag, ranking_limit, severity_hint
 
 SECONDS_PER_DAY = 86_400.0
 EPOCH = pd.Timestamp("1970-01-01")
@@ -41,9 +41,9 @@ def _split_clusters(g: pd.DataFrame, thresholds: list[float], near: float, windo
 
 
 @tool()
-def detect_splitting(buyer: str | None = None, supplier: str | None = None, window_days: int | None = None,
-                     min_awards: int | None = None, thresholds_kes: list[float] | None = None,
-                     years: list[int] | None = None, limit: int = 10) -> dict[str, Any]:
+def detect_splitting(buyer: BuyerArg = None, supplier: SupplierArg = None, window_days: WindowArg = None,
+                     min_awards: MinAwardsArg = None, thresholds_kes: ThresholdsArg = None,
+                     years: YearsArg = None, limit: LimitArg = 10) -> dict[str, Any]:
     """Look for possible contract splitting: several awards from the SAME buyer to the SAME supplier within a short
     window, each just below an approval threshold, whose combined total exceeds that threshold.
 

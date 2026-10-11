@@ -153,6 +153,18 @@ def inject_scope(args: dict[str, Any], schema: dict[str, Any], scope: dict[str, 
     return out, injected
 
 
+# ----------------------------------------------------------------------------- unknown arguments
+def prune_unknown_args(args: dict[str, Any], schema: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """Drop arguments the tool's schema does not declare. A small model sometimes invents one (a `buyer` on a tool that has
+    none); the server would ignore it silently and the step would run unscoped while the plan says otherwise, so the agent
+    removes it and records that it did. Returns (kept args, dropped names)."""
+    props = schema.get("properties")
+    if not props:
+        return dict(args), []
+    kept = {k: v for k, v in args.items() if k in props}
+    return kept, sorted(set(args) - set(kept))
+
+
 # ----------------------------------------------------------------------------- argument checks
 def schema_problems(args: Any, schema: dict[str, Any]) -> list[str]:
     """Human-readable problems of `args` against a tool's JSON input schema (empty list = valid)."""
@@ -166,6 +178,19 @@ def error_text(output: Any) -> str | None:
     """The tool-reported error message of a result, if any."""
     res = output.get("result") if isinstance(output, dict) else None
     return res.get("error") if isinstance(res, dict) else None
+
+
+COMPACT_FLAGS_SHOWN = 5
+COMPACT_OCIDS_SHOWN = 6
+
+
+def compact_result(output: Any) -> dict[str, Any]:
+    """A tool output reduced to what an LLM needs: its explanation, flag summaries and a few cited ocids (never full rows)."""
+    res = output.get("result") if isinstance(output, dict) else None
+    res = res if isinstance(res, dict) else {}
+    evidence = output.get("evidence") or [] if isinstance(output, dict) else []
+    return {"explanation": res.get("explanation"), "flags": [f.get("summary") for f in res.get("flags", [])][:COMPACT_FLAGS_SHOWN],
+            "n_evidence": len(evidence), "ocids": sorted({e["ocid"] for e in evidence})[:COMPACT_OCIDS_SHOWN]}
 
 
 # ----------------------------------------------------------------------------- candidates and citation guard

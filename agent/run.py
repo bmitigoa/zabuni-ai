@@ -13,12 +13,11 @@ import sys
 import time
 from typing import Any
 
-from agent.audit import AuditLog
-from agent.graph import new_run_id, run_agent
-from agent.llm import LLMError, create_llm
-from agent.mcp_client import McpBackend, ToolCallFailed
-from agent.nodes import AgentContext
+from agent.graph import new_run_id, pause_payload, run_agent
+from agent.llm import LLMError
+from agent.mcp_client import ToolCallFailed
 from agent.report import build_summary_md
+from agent.session import log_run_usage, open_session
 from agent.settings import DEFAULT_MODELS, SettingsError, load_settings
 
 ARGS_WIDTH = 110
@@ -57,7 +56,10 @@ class Printer:
             print(f"  x CITATION GUARD dropped a finding: {rec['reason']} {rec.get('ocids') or ''}", flush=True)
         elif kind == "scope_injected":
             print(f"  (scope added to the {rec['tool']} step: {', '.join(rec['injected'])})", flush=True)
-        elif kind in ("synth_fallback", "plan_rejected_steps"):
+        elif kind == "llm_fallback":
+            print(f"  ! MODEL FALLBACK {rec['from_model']} -> {rec['to_model']}: {rec['reason'][:100]}", flush=True)
+        elif kind in ("synth_fallback", "plan_rejected_steps", "args_pruned", "budget_stop", "rejected_flag_suppressed",
+                      "mcp_reconnect"):
             print(f"  ({kind}: {rec})", flush=True)
 
 
@@ -80,48 +82,52 @@ async def amain(argv: list[str] | None = None) -> int:
         settings = dataclasses.replace(settings, provider=provider, model=model)
     started = time.time()
     run_id = new_run_id()
-    printer = Printer()
-    async with McpBackend(settings) as backend:
-        rules = await backend.read_resource_json("rules://ppada")
-        if args.max_steps:
-            rules["agent"]["max_steps"] = args.max_steps
-        audit = AuditLog(run_id, settings.logs_dir, rules["agent"]["audit_output_max_chars"], echo=printer.echo)
-        backend.audit, backend.tool_timeout_s = audit, rules["agent"]["tool_timeout_s"]
-        llm = create_llm(settings, rules)
-        tools = await backend.tools()
-        ctx = AgentContext(backend=backend, llm=llm, audit=audit, rules=rules, tools=tools)
-        print(f"Run {run_id} | model {llm.name} | servers {backend.servers} | step cap {rules['agent']['max_steps']}")
+    async with open_session(settings, run_id, echo=Printer().echo, max_steps=args.max_steps) as s:
+        rules = s.rules
+        print(f"Run {run_id} | model chain {s.llm.names} | servers {s.backend.servers} | step cap {rules['agent']['max_steps']}"
+              f" | token budget {rules['agent']['max_total_tokens']}")
         print(f"Request: {args.query}")
         try:
-            state = await run_agent(ctx, args.query)
+            state = await run_agent(s.ctx, args.query, s.checkpointer)
         except LLMError as exc:                           # a model/provider problem: say what to do, no traceback
+            usage = log_run_usage(s, time.time() - started)
             print(f"\nRun failed: {exc}", file=sys.stderr)
             if settings.provider == "ollama" and "Connect" in str(exc):
                 print(f"Is Ollama running at {settings.ollama_base_url}? Start it and run `ollama pull {settings.model}`.",
                       file=sys.stderr)
-            print(f"The audit log up to the failure is in {settings.logs_dir}.", file=sys.stderr)
+            print(f"Tokens used before the failure: {usage['tokens']}. The audit log is in {settings.logs_dir}.", file=sys.stderr)
             return 1
-        run = {"model": llm.name, "llm_calls": llm.calls, "tokens": llm.tokens, "tool_calls": ctx.calls,
-               "seconds": time.time() - started}
+        usage = log_run_usage(s, time.time() - started)
+        paused = pause_payload(state)
         print("\nRESULT")
         print(f"  summary: {state.get('summary')}")
-        if state.get("stopped_reason"):
-            print(f"  stopped early: {state['stopped_reason']}")
+        for reason in state.get("stop_reasons", []):
+            print(f"  stopped early: {reason}")
         for f in state.get("flags_created", []):
             new = "created" if f["created"] else "already existed"
             print(f"  FLAG {f['flag_id']} [{f['severity']}] {f['rule']} ({new}, {f['status']}): {f['explanation'][:140]}")
         if not state.get("flags_created"):
             print("  no flags created")
-        print(f"  review status: {state.get('review_status')}  (Day 4 adds the human approval gate)")
-        print(f"  usage: {run['llm_calls']} LLM calls, {run['tokens']} tokens, {run['tool_calls']} tool calls, "
-              f"{run['seconds']:.0f} s | audit log: {settings.logs_dir / 'tool_calls.jsonl'}")
+        if state.get("suppressed"):
+            print(f"  {len(state['suppressed'])} flag(s) rejected by a reviewer earlier were not raised again")
+        quota = usage["remaining_daily_quota_estimate"]
+        print(f"  usage: {usage['llm_calls']} LLM calls, {usage['tokens']} tokens (est. cost ${usage['cost_usd']:.4f}), "
+              f"{usage['tool_calls']} tool calls, {usage['seconds']:.0f} s"
+              + (f" | est. daily quota left: {quota}" if quota is not None else "") + f" | audit log: {settings.logs_dir}")
         if not args.no_save:
+            run = {"model": s.llm.name, "llm_calls": usage["llm_calls"], "tokens": usage["tokens"],
+                   "tool_calls": usage["tool_calls"], "seconds": usage["seconds"]}
             md = build_summary_md(state, run, int(rules["agent"]["report_awards_listed"]))
             try:
-                path = await backend.save_text(f"summary_{run_id}.md", md, rules["agent"]["filesystem_write_tool_hint"])
+                path = await s.backend.save_text(f"summary_{run_id}.md", md, rules["agent"]["filesystem_write_tool_hint"])
                 print(f"  draft saved via the Filesystem MCP server: {path}")
             except ToolCallFailed as exc:
                 print(f"  could not save the draft: {exc}", file=sys.stderr)
+        if paused:
+            print(f"\nPAUSED for human review: {len(paused['flags'])} flag(s) are pending_review. Nothing enters the memo "
+                  f"until a reviewer decides.\n  Review:  python -m agent.review {run_id}")
+        elif state.get("memo_path"):
+            print(f"  memo: {state['memo_path']}")
     return 0
 
 

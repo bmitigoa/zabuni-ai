@@ -14,6 +14,9 @@ FILESYSTEM_PACKAGE = "@modelcontextprotocol/server-filesystem@2026.8.31"
 
 # Default models per provider (open-weights only). Why these two: see README "Agent architecture" and agent/llm.py.
 DEFAULT_MODELS = {"groq": "qwen/qwen3.8-27b", "ollama": "qwen2.5:7b"}
+# Ollama (local, free, no quota) is the default for development, evals and repeat runs. Groq is for the hosted demo, the demo
+# video and the final sample run: its free tier allows only about 200,000 tokens a day for the Qwen model.
+DEFAULT_PROVIDER = "ollama"
 PROVIDERS = tuple(DEFAULT_MODELS)
 
 
@@ -36,7 +39,7 @@ def load_settings(env_file: Path | None = None, environ: dict[str, str] | None =
     if environ is None:
         load_dotenv(env_file or ROOT / ".env", override=False)
         environ = dict(os.environ)
-    provider = (environ.get("LLM_PROVIDER") or "groq").strip().lower()
+    provider = (environ.get("LLM_PROVIDER") or DEFAULT_PROVIDER).strip().lower()
     if provider not in PROVIDERS:
         raise SettingsError(f"LLM_PROVIDER must be one of {list(PROVIDERS)}, got {provider!r}.")
     model = (environ.get("MODEL") or "").strip() or DEFAULT_MODELS[provider]

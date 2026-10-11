@@ -20,7 +20,7 @@ class FakeLLM:
         self.calls = 0
         self.tokens = 0
 
-    async def structured(self, schema: type[BaseModel], system: str, user: str) -> BaseModel:
+    async def structured(self, schema: type[BaseModel], system: str, user: str, kind: str = "llm") -> BaseModel:
         self.calls += 1
         self.prompts.setdefault(schema.__name__, []).append((system, user))
         entry = self.script[schema]

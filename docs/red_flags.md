@@ -47,6 +47,22 @@ agent can collect candidate flags without knowing each tool's result shape; the 
 evidence the tool returned. `compute_price_benchmark` additionally returns machine-readable `widen_options`
 (`{op: drop|set, arg, [value]}`) when it has too few comparables, which the agent applies generically to recover.
 
+## Human-review tools and the approval gate (Day 4)
+
+None of these is a detection rule: they implement the gate between "the agent found something" and "it may enter the memo".
+All writes go to the flags store; the analysis database stays read-only. Reviewers are recorded **by role**
+(procurement_officer, internal_auditor, committee_member, oversight_reviewer, demo_reviewer), never by name.
+
+| Tool | Purpose | Rules (provisional) |
+|---|---|---|
+| `list_flags` (read-only, reviewer view) | Lists stored flags with their cited records, decisions and clarification history | filters by run, status or ids; `limit` 1–50 |
+| `record_decision` (write) | Stores approve / reject / clarify on a flag, append-only history | decision in {approve, reject, clarify}; a reason of at least 5 characters is required; only a pending or clarification-requested flag can be decided; at most 2 clarification rounds per flag |
+| `attach_clarification` (write) | Records the agent's answer to a reviewer's question, with any new evidence, and returns the flag to review | needs an unanswered question; new evidence must exist in the OCDS data |
+| `draft_eval_memo` (write) | Builds the evaluation memo from **approved** flags only and stores it | rejected, pending and clarification-requested flags are only counted, never listed; the memo states the data limitations, how the run ended (budget, quota, errors) and that it does not recommend or award any tender |
+
+A **rejected** flag is remembered: `flag_finding` returns the existing, rejected flag instead of creating it again, and the
+agent does not re-raise it in a later run (same rule, same cited records).
+
 ## Rules considered and DROPPED (data does not support them)
 
 | Planned check | Why dropped |

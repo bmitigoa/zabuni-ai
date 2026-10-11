@@ -5,15 +5,15 @@ from typing import Any
 
 from mcp_server.common import (ToolInputError, base_cte, clean_date, clean_text, envelope, ev, norm, rows, rules)
 from mcp_server.registry import tool
-from mcp_server.toolkit import award_row, clamp
+from mcp_server.toolkit import BuyerArg, DateArg, KeywordArg, LimitArg, SortArg, SupplierArg, award_row, clamp
 
 SORTS = ("newest", "largest")
 
 
 @tool()
-def search_awards(buyer: str | None = None, supplier: str | None = None, title_keyword: str | None = None,
-                  date_from: str | None = None, date_to: str | None = None, limit: int = 20,
-                  sort_by: str = "newest") -> dict[str, Any]:
+def search_awards(buyer: BuyerArg = None, supplier: SupplierArg = None, title_keyword: KeywordArg = None,
+                  date_from: DateArg = None, date_to: DateArg = None, limit: LimitArg = 20,
+                  sort_by: SortArg = "newest") -> dict[str, Any]:
     """Find awards in the frozen PPRA Kenya OCDS snapshot. Use this first to explore and to get ocid/award_id values.
 
     At least one filter is required. `buyer` and `supplier` are case-insensitive partial company/organisation

@@ -13,6 +13,8 @@ from pathlib import Path
 import duckdb
 import pytest
 
+from langgraph.checkpoint.memory import InMemorySaver
+
 from agent.audit import AuditLog
 from agent.graph import run_agent
 from agent.llm import LLMError
@@ -24,6 +26,7 @@ from mcp_server.rules import load_rules
 from tests.fakes import FakeLLM
 
 BUYER = "Makueni County Government"
+REVIEW_TIME_TOOLS = {"draft_eval_memo", "list_flags", "record_decision", "attach_clarification"}
 
 
 @pytest.fixture(autouse=True)
@@ -50,7 +53,7 @@ def run_scenario(llm, tmp_path, rules_edit=None, connections=None, rules=None):
             audit = AuditLog("run_test", settings.logs_dir, r["agent"]["audit_output_max_chars"])
             backend.audit = audit
             ctx = AgentContext(backend=backend, llm=llm, audit=audit, rules=r, tools=await backend.tools())
-            return await run_agent(ctx, "test request"), ctx
+            return await run_agent(ctx, "test request", InMemorySaver()), ctx
     return asyncio.run(go())
 
 
@@ -62,7 +65,8 @@ def events(tmp_path, type_=None):
 
 def tool_calls(tmp_path):
     f = tmp_path / "logs" / "tool_calls.jsonl"
-    return [json.loads(line) for line in f.read_text(encoding="utf-8").splitlines()] if f.exists() else []
+    calls = [json.loads(line) for line in f.read_text(encoding="utf-8").splitlines()] if f.exists() else []
+    return [c for c in calls if c["tool"] not in REVIEW_TIME_TOOLS]          # the memo/review tools run after the investigation
 
 
 def stored_flags(path):
@@ -77,7 +81,7 @@ def stored_flags(path):
 
 def synth_from_candidates(user: str) -> SynthOutput:
     """A cooperative 'model': one finding per candidate id it is shown, worded from the candidate's own summary."""
-    items = json.loads(user.split("Candidate flags:\n", 1)[1].split("\n\nRun notes", 1)[0])
+    items = json.loads(user.split("Candidate flags:\n", 1)[1].split("\n\nNotes:", 1)[0])
     return SynthOutput(summary="Neutral summary written by the fake model.",
                        findings=[FindingDraft(candidate_id=i["id"], severity=i["severity_hint"], ocids=i["ocids"][:1],
                                               explanation=f"{i['summary']} Flagged for human review.") for i in items])
@@ -88,9 +92,9 @@ def test_planner_prompt_is_built_from_the_discovered_tools_and_excludes_the_flag
     llm = FakeLLM({Plan: make_plan(("search_awards", {"buyer": BUYER, "limit": 2}))})
     state, ctx = run_scenario(llm, tmp_path)
     prompt = llm.prompts["Plan"][0][1]
-    assert {t.name for t in ctx.plannable} <= set(re.findall(r"### (\w+)", prompt)) and len(ctx.plannable) >= 5
+    assert {t.name for t in ctx.plannable} <= set(re.findall(r"^- (\w+):", prompt, re.M)) and len(ctx.plannable) >= 5
     writer = next(t for t in ctx.tools if t.role)                     # found by role from list_tools, not by name
-    assert f"### {writer.name}" not in prompt and not writer.read_only
+    assert f"- {writer.name}:" not in prompt and not writer.read_only
     assert state["results"][0]["tool"] == "search_awards" and state["results"][0]["error"] is None
     assert state["plan"]["steps"][0]["origin"] == "plan"
 
@@ -115,7 +119,7 @@ def test_a_tool_added_to_the_server_is_usable_with_no_agent_change(tmp_path):
     conns = {"zabuni": {"transport": "stdio", "command": sys.executable, "args": [str(script)], "env": None}}
     llm = FakeLLM({Plan: make_plan(("zz_brand_new_check", {"buyer": BUYER}))})
     state, ctx = run_scenario(llm, tmp_path, connections=conns, rules=load_rules())
-    assert "### zz_brand_new_check" in llm.prompts["Plan"][0][1]                     # discovered, shown to the planner
+    assert "- zz_brand_new_check:" in llm.prompts["Plan"][0][1]                     # discovered, shown to the planner
     assert state["results"][0]["tool"] == "zz_brand_new_check" and state["results"][0]["error"] is None
     assert state["results"][0]["output"]["result"]["note"] == "ran"
 
@@ -230,7 +234,7 @@ def test_the_step_cap_stops_the_run_and_says_so(tmp_path):
 # ----------------------------------------------------------------------------- citation guard (integration)
 def test_the_citation_guard_drops_invented_ocids_and_nothing_invented_is_stored(tmp_path, isolated_flags_db):
     def lying_synth(system, user):
-        items = json.loads(user.split("Candidate flags:\n", 1)[1].split("\n\nRun notes", 1)[0])
+        items = json.loads(user.split("Candidate flags:\n", 1)[1].split("\n\nNotes:", 1)[0])
         c = items[0]
         return SynthOutput(summary="The supplier also won ocds-9zzz-INVENTED-SUMMARY last year.", findings=[
             FindingDraft(candidate_id=c["id"], severity="high", ocids=["ocds-9zzz-FAKE-1"], explanation="Cites a made-up ocid."),
@@ -277,7 +281,7 @@ def test_only_the_configured_number_of_candidates_is_shown_to_the_synthesiser_bu
     llm = FakeLLM({Plan: make_plan(("detect_splitting", {"buyer": BUYER, "limit": 5})),
                    SynthOutput: lambda system, user: synth_from_candidates(user)})
     state, _ = run_scenario(llm, tmp_path, rules_edit=lambda r: r["agent"].update(synth_max_candidates=1))
-    shown = json.loads(llm.prompts["SynthOutput"][0][1].split("Candidate flags:" + chr(10), 1)[1].split(chr(10) * 2 + "Run notes", 1)[0])
+    shown = json.loads(llm.prompts["SynthOutput"][0][1].split("Candidate flags:" + chr(10), 1)[1].split(chr(10) * 2 + "Notes:", 1)[0])
     total = sum(len((r["output"]["result"].get("flags") or [])) for r in state["results"])
     assert len(shown) == 1 and total > 1 and len(state["flags_created"]) == total               # the rest keep the tool's text
     assert [f["source"] for f in state["findings"]].count("candidate") == 1

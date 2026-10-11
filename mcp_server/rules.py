@@ -98,6 +98,48 @@ DEFAULT_RULES: dict[str, Any] = {
         "min_explanation_chars": 20,          # flag_finding rejects shorter explanations
         "db_path": "data/flags.duckdb",       # writable flags store (the analysis database stays read-only)
         "status_pending": "pending_review",
+        "status_approved": "approved",
+        "status_rejected": "rejected",        # remembered: the same flag (same rule and cited records) is not re-raised
+        "status_clarify": "clarification_requested",
+    },
+    "review": {
+        # Human approval gate. Reviewers are recorded by ROLE, never by name (no personal data).
+        "roles": ["procurement_officer", "internal_auditor", "committee_member", "oversight_reviewer", "demo_reviewer"],
+        "decisions": ["approve", "reject", "clarify"],
+        "min_reason_chars": 5,                # a reason is required for every decision
+        "max_clarify_rounds": 2,              # re-investigations per flag before it must be decided
+        "clarify_max_steps": 2,               # tool calls the agent may spend answering one clarification
+        "interrupt_evidence_shown": 5,        # evidence items per flag shown in the pause payload / review CLI
+    },
+    "memo": {
+        "evidence_listed_per_flag": 10,       # cited records listed per approved finding in the memo
+        "disclaimer": "This memo does not recommend or award any tender. Every finding is a screening indicator from "
+                      "published OCDS data, approved by a human reviewer, and may have a legitimate explanation.",
+        "limitations": [
+            "Bid documents are not published, so bid content, scoring and bidder qualifications cannot be assessed.",
+            "The data has no tenderers, tender estimates or item-level detail; price comparisons use title words, category and "
+            "buyer type only, and a cluster of awards may be genuinely different goods.",
+            "Award dates are contract signing dates; amounts outside the valid range are excluded from statistics.",
+            "Supplier-based checks cover only awards that name a supplier. All thresholds are provisional and unvalidated.",
+        ],
+    },
+    "price_anomalies": {
+        "min_cohort": 30,                     # comparable awards needed before the model is fitted
+        "contamination": 0.01,                # expected share of anomalies
+        "random_state": 42,                   # fixed seed: the same data always gives the same answer
+        "n_estimators": 100,
+        "min_ratio_to_median": 3.0,           # an anomaly must also be at least this multiple of the cohort median
+        "max_anomalies": 10,
+        "comparables_cited": 5,
+    },
+    "demo": {
+        # Hosted-demo guard (the Streamlit app on Day 5 uses it)
+        "runs_per_visitor_per_hour": 3,
+        "expected_run_tokens": 8000,          # a run needs roughly this many tokens; checked against the estimated daily quota
+        "quota_message": "The daily free-tier quota for the live model has been reached. Please watch the recorded demo "
+                         "video instead; the live demo works again when the quota resets.",
+        "rate_message": "You have reached the limit of live runs per hour for this demo. Please try again later or watch "
+                        "the recorded demo video.",
     },
     "agent": {
         "max_steps": 12,                      # tool calls the Investigator may make in one run (step cap)
@@ -117,6 +159,34 @@ DEFAULT_RULES: dict[str, Any] = {
         "open_weights_families": ["llama", "qwen", "gpt-oss", "gemma", "mistral", "mixtral", "deepseek", "phi"],
         "flag_writer_role": "flag_writer",    # role (from tool metadata) of the tool that persists flags
         "synth_max_candidates": 8,            # candidate flags the Synthesiser is asked to word (the rest keep the tool's text)
+        # --- run budget (the run stops cleanly and the memo says so)
+        "max_total_tokens": 25000,            # LLM tokens (prompt + reply) per run; Ollama and Groq alike
+        "synth_reserve_tokens": 4000,         # kept back so the Synthesiser can still run when the investigation is cut short
+        "max_clarify_tokens": 6000,           # most tokens one clarification round may use
+        # --- token economy
+        "catalogue_brief_chars": 220,         # the Planner sees only the first sentence(s) of each tool description
+        "ollama_num_ctx": 4096,               # context window requested from Ollama (its default may truncate prompts)
+        "ollama_keep_alive": "15m",           # keep the local model loaded between calls
+        # --- providers, fallback, quota, cost
+        "llm_fallback_models": {"groq": ["openai/gpt-oss-120b"]},   # tried in order on a 429; separate quota per model
+        "groq_daily_token_limits": {"qwen/qwen3.8-27b": 200000},      # free tier as observed on 10 Oct 2026 (unknown: not listed)
+        "quota_window_hours": 24,             # Groq's daily limit behaves like a rolling window (observed)
+        "pricing": {
+            # Pay-as-you-go equivalent in USD per 1M tokens, from console.groq.com/docs/models. The page shows no date; the
+            # values were retrieved on 11 Oct 2026. The free tier itself costs nothing. Ollama (local) cost is 0.
+            "as_of": "2026-10-11 (retrieval date; the source page is undated)",
+            "source": "https://console.groq.com/docs/models",
+            "groq": {"qwen/qwen3.8-27b": {"input_per_mtok": 0.80, "output_per_mtok": 4.00},
+                     "openai/gpt-oss-120b": {"input_per_mtok": 0.15, "output_per_mtok": 0.60},
+                     "openai/gpt-oss-20b": {"input_per_mtok": 0.075, "output_per_mtok": 0.30}},
+        },
+        "review_round_allowance": 20,         # extra graph visits allowed for review/clarify rounds (LangGraph recursion limit)
+        "mcp_reconnects": 1,                  # times a dead MCP server is restarted before the call fails
+        "checkpoint_db": "data/checkpoints.sqlite",   # LangGraph SQLite checkpointer: the paused run survives a restart
+        "flag_reader_role": "flag_reader",    # roles (from tool metadata) of the review-time tools
+        "decision_writer_role": "decision_writer",
+        "clarification_writer_role": "clarification_writer",
+        "memo_writer_role": "memo_writer",
         # Argument NAMES shared by the tools; the Planner's scope (buyer, years) is injected into any step whose schema has
         # them but whose arguments omit them. Agent code never names a tool, only these argument conventions.
         "scope_args": {"buyer": "buyer", "years": "years", "date_from": "date_from", "date_to": "date_to"},

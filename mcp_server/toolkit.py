@@ -1,12 +1,34 @@
 """Small helpers shared by the tool modules (kept out of common.py, which is about data access and envelopes)."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
 import pandas as pd
+from pydantic import Field
 
 from mcp_server.common import ToolInputError, rules
-from mcp_server.rules import buyer_type_names
+from mcp_server.rules import DEFAULT_RULES, buyer_type_names
+
+# Short, per-argument descriptions that end up in each tool's JSON schema. Clients (and the agent's compact catalogue) read
+# these instead of the long docstring. Enumerations come from the default rules, so they cannot drift from them.
+_CATEGORIES = " | ".join(DEFAULT_RULES["categories"])
+_BUYER_TYPES = " | ".join(buyer_type_names(DEFAULT_RULES))
+BuyerArg = Annotated[str | None, Field(description="Organisation name (partial ok); must identify one buyer")]
+SupplierArg = Annotated[str | None, Field(description="Partial supplier name")]
+KeywordArg = Annotated[str | None, Field(description="Word or phrase in the award title")]
+YearsArg = Annotated[list[int] | None, Field(description="Calendar years, e.g. [2023, 2024]")]
+LimitArg = Annotated[int, Field(description="Maximum rows returned")]
+CategoryArg = Annotated[str | None, Field(description=_CATEGORIES)]
+BuyerTypeArg = Annotated[str | None, Field(description=_BUYER_TYPES)]
+DateArg = Annotated[str | None, Field(description="YYYY-MM-DD")]
+SortArg = Annotated[str, Field(description="newest | largest")]
+OcidArg = Annotated[str | None, Field(description="OCDS process id, taken from a search result")]
+AwardIdArg = Annotated[str | None, Field(description="Award id inside that ocid")]
+AmountArg = Annotated[float | None, Field(description="A KES amount to position against the cohort")]
+AutoKeywordsArg = Annotated[bool, Field(description="false = compare on category only")]
+WindowArg = Annotated[int | None, Field(description="Days within which awards count as one purchase")]
+MinAwardsArg = Annotated[int | None, Field(description="Smallest cluster size")]
+ThresholdsArg = Annotated[list[float] | None, Field(description="Approval thresholds in KES")]
 
 
 def clamp(value: int, lo: int, hi: int) -> int:

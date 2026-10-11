@@ -34,6 +34,10 @@ ROWS = [
     ("flags.min_explanation_chars", lambda v: f"explanation ≥ {v} characters"),
     ("flags.severities", lambda v: f"severity in {{{', '.join(v)}}}"),
     ("limits.search_max", lambda v: f"`limit` 1–{v}"),
+    ("review.min_reason_chars", lambda v: f"a reason of at least {v} characters is required"),
+    ("review.max_clarify_rounds", lambda v: f"at most {v} clarification rounds per flag"),
+    ("review.decisions", lambda v: f"decision in {{{', '.join(v)}}}"),
+    ("review.roles", lambda v: f"({', '.join(r for r in v if r != 'demo_reviewer')}, demo_reviewer)"),
     ("data_cleaning.max_valid_amount_kes", lambda v: f"above KES {v / 1e9:g} billion"),
 ]
 

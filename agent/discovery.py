@@ -44,19 +44,48 @@ def tool_with_role(tools: list[ToolInfo], role: str) -> ToolInfo | None:
     return next((t for t in tools if t.role == role), None)
 
 
-def compact_schema(schema: dict[str, Any]) -> str:
-    """Argument names, types, enums, defaults and required list in one line, for the prompt."""
-    props = {}
+BRIEF_MIN_CUT = 40          # do not cut a description shorter than this when looking for a sentence boundary
+
+
+def brief(description: str, max_chars: int) -> str:
+    """The first paragraph of a tool description, cut at a sentence boundary within `max_chars`.
+
+    The Planner needs to know what a tool is FOR, not its every threshold; the full text stays available through list_tools."""
+    para = " ".join(description.strip().split("\n\n")[0].split())
+    if len(para) <= max_chars:
+        return para
+    cut = para[:max_chars]
+    boundary = max(cut.rfind(". "), cut.rfind("; "), cut.rfind(": "))
+    return (cut[:boundary + 1] if boundary > BRIEF_MIN_CUT else cut.rstrip()) + ("" if boundary > BRIEF_MIN_CUT else "...")
+
+
+def type_label(spec: dict[str, Any]) -> str:
+    """A short type for one JSON-schema property: str, int, int[], a|b|c for enums, ..."""
+    if "enum" in spec:
+        return "|".join(str(v) for v in spec["enum"])
+    options = [o for o in spec.get("anyOf", []) if o.get("type") != "null"] or [spec]
+    t = options[0]
+    kind = t.get("type", "any")
+    if kind == "array":
+        return type_label(t.get("items", {})) + "[]"
+    return {"string": "str", "integer": "int", "number": "num", "boolean": "bool"}.get(kind, kind)
+
+
+def compact_args(schema: dict[str, Any]) -> str:
+    """One short line per argument: `name: type (description)`. Required arguments are marked with *."""
+    required = set(schema.get("required", []))
+    lines = []
     for name, spec in (schema.get("properties") or {}).items():
-        entry = {k: spec[k] for k in ("type", "enum", "default", "items", "anyOf") if k in spec}
-        props[name] = entry
-    return json.dumps({"properties": props, "required": schema.get("required", [])}, ensure_ascii=False)
+        note = spec.get("description")
+        lines.append(f"{name}{'*' if name in required else ''}: {type_label(spec)}" + (f" ({note})" if note else ""))
+    return "; ".join(lines)
 
 
-def catalogue(tools: list[ToolInfo]) -> str:
-    """The tool catalogue shown to the Planner: name, full description, argument schema."""
-    blocks = []
-    for t in tools:
-        desc = " ".join(t.description.split())
-        blocks.append(f"### {t.name}\n{desc}\nArguments (JSON schema): {compact_schema(t.input_schema)}")
-    return "\n\n".join(blocks)
+def compact_schema(schema: dict[str, Any]) -> str:
+    """The argument list in the same short form (used in correction prompts)."""
+    return compact_args(schema)
+
+
+def catalogue(tools: list[ToolInfo], brief_chars: int = 220) -> str:
+    """The tool catalogue shown to the Planner: name, a brief description, and a compact argument list."""
+    return "\n".join(f"- {t.name}: {brief(t.description, brief_chars)}\n  args: {compact_args(t.input_schema)}" for t in tools)
