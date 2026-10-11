@@ -26,7 +26,7 @@ py -3.12 -m venv .venv312
 .venv312/Scripts/python data/loader.py          # builds data/zabuni.duckdb (about 10 s)
 cp .env.example .env                            # then put your GROQ_API_KEY in .env
 .venv312/Scripts/python -m agent.models         # lists the models YOUR key can use (a documented model may be unavailable)
-.venv312/Scripts/python -m pytest               # 141 tests; the last is a live LLM smoke test that needs a Groq key and skips (not fails) on a provider limit
+.venv312/Scripts/python -m pytest               # ~210 tests; one live LLM smoke test needs a Groq key and skips (not fails) on a provider limit (set ZABUNI_SKIP_LIVE=1 to skip it)
 ```
 
 **Python version.** Deployment is pinned to **Python 3.12** (`runtime.txt`, read by Heroku/Render-style builds); the full
@@ -132,8 +132,8 @@ explicit and testable.
 measurement on this project's own planning task rather than reputation: it was the most reliable, and the only model measured
 on the final schema. Groq's docs list `llama-3.3-70b-versatile`, but the key used here cannot call it (HTTP 404), so Llama could
 not be compared; the gpt-oss models were less reliable on the first schema. Full record, including a check that was too
-lenient and the schema change that fixed it, in [`docs/sample_run/model_check.md`](docs/sample_run/model_check.md). Ollama
-fallback: `qwen2.5:7b` (not tested here: Ollama is not installed on the build machine). The sample is small; it supports a
+lenient and the schema change that fixed it, in [`docs/sample_run/model_check.md`](docs/sample_run/model_check.md). Local
+model: `qwen2.5:7b` on Ollama, used for development and the recorded sample run (`docs/sample_run/`); it follows the plan schema but writes looser summaries. The sample is small; it supports a
 default, it is not a benchmark.
 
 ## 9. MCP implementation

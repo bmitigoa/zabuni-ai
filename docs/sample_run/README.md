@@ -1,33 +1,43 @@
-# Sample runs (real)
+# Sample run (Day 4): plan, tools, flags, human decisions, memo
 
-Two real runs of the agent on the same request, `python -m agent.run "Investigate Makueni County Government 2022-2024"`, with the
-live open-weights model `groq:qwen/qwen3.8-27b`, on 10 Oct 2026 (UTC). Nothing here is scripted or edited: the files are the
-agent's own audit-log lines for each run (filtered by `run_id`), the draft summary it saved through the Filesystem MCP server,
-and the flags it stored with `flag_finding` (exported from the flags database).
+One real end-to-end run of the final Day 4 code, in [`final_ollama_run_20261011_160025_2ff7/`](final_ollama_run_20261011_160025_2ff7/).
+It replaces the two mixed Day 3 runs (their lessons are in the git history and in `model_check.md`).
 
-| | Run A: `run_20261010_204919_4a7e` | Run B: `run_20261010_220028_7932` |
-|---|---|---|
-| Code | earlier version: arguments as a JSON string but **without** the worked example in the planner prompt | the final Day 3 code |
-| Plan | 4 steps; the model left the arguments empty, so **scope injection** added the buyer and years to all four (4 `scope_injected` events) | 5 steps; the model carried the buyer and years itself (no injection) |
-| Follow-ups | 3 price checks after the search; none flagged | 3 price checks after the search; **all three flagged** (7.0x, 6.6x, 8.7x), each triggering a splitting check for that supplier |
-| Synthesiser | **the LLM ranked and worded the findings** (see `summary.md`) | the provider's daily token quota ran out: `synth_fallback` event, the tools' own wording was used (graceful degradation) |
-| Flags stored | 4 (splitting), all `pending_review` | 7 (3 price outliers + 4 splitting), all `pending_review` |
-| Console output | not saved to a file for this run | `console.txt` |
+**Model: `ollama:qwen2.5:7b` (open-weights, local, cost 0).** Groq's free-tier quota was kept for the hosted demo and the demo video.
+**The reviewer decisions are demo inputs**: they were typed by the developer's coding assistant under the role `demo_reviewer`, not by a
+procurement professional. Their reasons describe what the cited records show; they are not audit findings.
 
-Each folder holds `tool_calls.jsonl` (every MCP tool call: run id, timestamp, tool, inputs, output summary, output, duration, error),
-`agent_events.jsonl` (the agent's decisions: plan, follow-ups, scope injection, synthesiser fallback), `summary.md` (the draft
-summary, labelled pending human review), and `flags.json` (the stored flags with their cited OCDS records).
+Request: `Review Makueni County Government awards 2022-2023 for splitting and price anomalies` (`--max-steps 8`).
 
-How to read them honestly:
-- **Flags are screening indicators, not findings.** The four splitting clusters are three awards each to one supplier just below a
-  threshold within weeks; without item-level data they may be different works. The three price outliers are "staff medical
-  insurance cover" awards compared with other awards whose titles share the words "medical" and "staff"; a large insurance premium
-  can be entirely legitimate. A human decides (the approval gate is built on Day 4).
-- **A real LLM varies.** The same request produced different plans in the two runs; the splitting flags are identical because they come
-  from a deterministic tool.
-- **There was a third, failed first run** (before the fixes: empty arguments, 30 flags about unrelated buyers). It is described in the
-  Day 3 notes and in `model_check.md`, and is deliberately not presented as a sample.
-- The model-selection evidence is in [`model_check.md`](model_check.md).
-- Company and buyer names are from the public PPRA data; no personal data is loaded anywhere in the pipeline.
+| File | What it is |
+|---|---|
+| `console_run.txt` | `python -m agent.run ...`: the plan, every tool call, follow-ups, the 8 flags, usage, and the pause |
+| `console_review.txt` | `python -m agent.review <run_id> --role demo_reviewer`: flags with evidence, the decisions, the clarify round, the memo |
+| `memo.md` | the evaluation memo: **approved flags only** (4 of 8 considered), reasons, limitations, the no-award statement |
+| `draft_summary.md` | the pre-review draft summary (every flag still `pending_review`) |
+| `tool_calls.jsonl`, `agent_events.jsonl`, `llm_usage.jsonl` | the audit log: every MCP call, every agent decision (plan, follow-ups, `decision`, `clarification`), every LLM call with tokens |
 
-Reproduce: see the README (Usage). A run costs roughly 6-8k tokens; the free tier's daily quota for this model is 200,000 tokens.
+What happened, in order:
+
+1. **Plan** (1 LLM call, 1,269 tokens; the Day 3 planner call was about 3,087): 3 steps built from the six tools discovered with
+   `list_tools`. The newly added `detect_price_anomalies` was used with no agent change.
+2. **Investigation**: 14 more calls, including follow-ups added by the policy rules (price checks of the awards found, then splitting and
+   concentration checks after a price outlier). 16 tool calls in total.
+3. **Synthesis** (1 LLM call) and the **pause**: 8 flags stored as `pending_review`; nothing in a memo.
+4. **Review**: 1 flag sent back with a question (**clarify**); the agent planned tool calls, answered, and the run paused again; then it was approved.
+   4 approved (one of them after the clarify round), 4 rejected (two-award clusters). A reason was required for each.
+5. **Memo**: drafted from the 4 approved flags only and saved to `outputs/` through the Filesystem MCP server.
+
+Usage (from the log): run phase 3,787 tokens in about 390 s; review phase 1,437 tokens in about 120 s (5,224 in all, against roughly 6-8 thousand for a Day 3 run); cost 0 (local).
+
+**Honest notes on quality (7B local model).**
+* The model's summary says "possible irregularities ... further investigation is needed": looser than the tools' own text. That is why every flag
+  keeps the tool's wording and cited records, and why a human reads the evidence, not the summary.
+* The clarification answer is thin: the 7B model had only the tool results to go on. The reviewer saw it and decided anyway; the system does
+  not pretend the answer is more than it is.
+* The "steel drums" price flag compares one award with ten "comparables" that include unrelated items (the data has no item-level detail), and the
+  "staff medical cover" price anomaly (71x the cohort median) may be a data-entry error. Both are prompts for a human to check, as the memo says.
+* Latency on a laptop CPU is minutes per LLM call; a Groq run takes seconds.
+
+`model_check.md` is the Day 3 record of how the Groq model was chosen. A local-model reliability check can be re-run with
+`python -m evals.model_check --provider ollama` (results go to `model_check_ollama.md`).
