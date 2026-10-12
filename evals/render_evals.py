@@ -73,7 +73,10 @@ def variance_section(provider: str, data: dict[str, Any] | None) -> list[str]:
                    f"{spread([r['n_flags'] for r in ok])} | {spread([r['tokens'] for r in ok])} | {spread([r['seconds'] for r in ok])} | "
                    f"{spread([r['cost_usd'] for r in ok], '{:.4f}')} |")
     out += ["", "Per run:", "", "| Query | Run | Plan (tools) | Tool calls | Flags (high/med/low) | Tokens | Seconds | Fallbacks |", "|---|---|---|---|---|---|---|---|"]
-    for i, r in enumerate(runs, 1):
+    counter: dict[str, int] = {}
+    for r in runs:
+        counter[r["query"]] = counter.get(r["query"], 0) + 1
+        i = counter[r["query"]]
         if r.get("ok"):
             sev = r["severities"]
             out.append(f"| {r['query']} | {i} | {', '.join(t.replace('detect_', '').replace('compute_', '') for t in r['plan_tools'])} | {r['tool_calls']} | "
@@ -122,8 +125,12 @@ def main() -> None:
     out += [f"* **{q}**: {text}" for q, text in QUERY_TEXT.items()] + [""]
     out += variance_section("Ollama", ollama) + variance_section("Groq", groq)
     out += ["Reading the tables: *identical plan* = share of runs whose set of planned tools equals the most common set; *overlap* = mean Jaccard similarity of the flagged-award sets between runs "
-            "(1.0 = the same awards every time). The investigation is deterministic given a plan (the tools are exact SQL and a seeded model), so flag spread comes from plan differences; "
-            "tokens and seconds vary with the model and, on Groq, with rate-limit waits. Samples are small (5 and 2 runs per request): they show the spread, they do not bound it.", ""]
+            "(1.0 = the same awards every time). The tools are exact queries and a seeded model, and the language models run at temperature 0, so **run-to-run spread is near zero**: "
+            "the same plan, the same flagged awards, tokens within a handful. The first Ollama run of each query is slower only because the local model had to load. "
+            "**The real difference is between models, not between runs:** for the same request Qwen 2.5 7B (Ollama) plans 3 tools and Qwen 3.8 27B (Groq) plans 5, so Groq finds more "
+            "(for Q2, 3 flags against 1). On Groq every Q1 run logs one fallback: Qwen's summary call returned a malformed tool call five times and gpt-oss-120b answered that one call "
+            "(cheaper per token, which is why Q1 costs less than Q2 for similar tokens). Samples are small (5 and 2 runs per request): they show the spread, they do not bound it, "
+            "and temperature 0 does not guarantee identical output on a hosted model that changes under us.", ""]
     out += cost_section(groq, ollama)
     (ROOT / "EVALS.md").write_text("\n".join(out) + "\n", encoding="utf-8")
     print("EVALS.md written")

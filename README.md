@@ -328,10 +328,22 @@ See also "Data source & limitations" below.
 - Flags are screening indicators for human review, not findings of wrongdoing.
 
 ## Evals summary
-_TBD (Day 6)_
+Full results, reproduction commands and every failure: [`EVALS.md`](EVALS.md) (real runs on the frozen snapshot, stored in `evals/results/`).
+* **21 cases: 18 pass, 3 fail.** 10 detection cases (each rule on a known positive and a known negative), 8 agent cases with a scripted model (citation guard, scope guard, budget stop, rejected-flag memory, clarify loop, duplicate-flag merge, scope check, flag cap), and 3 practitioner-style false alarms (road-section lots, repeat supply under a framework, direct procurement) that **fail on purpose**: the rules flag them, the cards say which lawful explanations to rule out.
+* **Intentional failure:** `hello` produced 40 flags in 53 tool calls; after the scope guard it runs no tool (before/after in [`evals/intentional_failure.md`](evals/intentional_failure.md)).
+* **Run-to-run variance** (same two requests, Ollama x5 and Groq x2): identical plans, identical flagged awards and token counts within a handful of tokens at temperature 0; the real difference is between models (Qwen 2.5 7B plans 3 tools, Qwen 3.8 27B plans 5).
 
 ## Cost per run
-_TBD (Day 6)_
+| | Tokens (median) | Estimated cost | Time (median) |
+|---|---|---|---|
+| Groq `qwen/qwen3.8-27b` (hosted demo) | about 4,200 | about $0.005 at list price (free tier: nothing) | about 1 minute |
+| Hosted run including a review round with a clarification (live test, 12 Oct) | 6,427 | $0.0066 | about 1.5 minutes |
+| Ollama `qwen2.5:7b` (local) | about 3,000 | $0 (electricity not counted) | about 3.5 minutes on a laptop CPU |
+
+Prices come from the dated list in `rules.py` (`agent.pricing`, retrieved 11 Oct 2026); costs are *estimates*, and the hosted demo's real cost is zero on the free tier.
+
+## Demo video
+_Link added on submission day (Day 7)._ Script: [`docs/demo_script.md`](docs/demo_script.md). Submission text: [`docs/submission_description.md`](docs/submission_description.md).
 
 ## License
 MIT — see [LICENSE](LICENSE).
