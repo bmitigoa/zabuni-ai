@@ -14,7 +14,9 @@ _TBD_
 _TBD_
 
 ## 4. Architecture
-_TBD_ (see `ARCHITECTURE.md` once added)
+![Zabuni AI system architecture](docs/architecture.png)
+
+Vector version: [`docs/architecture.pdf`](docs/architecture.pdf); one-page explanation: [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## 5. Setup / installation
 _One-command setup is still TBD (Day 6)._ Requirements: Python 3.12, Node.js with `npx` (for the Filesystem MCP server), the frozen snapshot, and a Groq API key (or Ollama). On Windows (on macOS/Linux use `.venv312/bin/` and `python3.12`):
@@ -53,7 +55,7 @@ version 2026.8.31 in `agent/settings.py`), so the first agent run needs network 
 ```bash
 .venv312/Scripts/python -m streamlit run app/streamlit_app.py        # http://localhost:8501
 ```
-**Hosted demo:** _link coming after the Streamlit Community Cloud app is created_ (steps in `deploy/hf/DEPLOY.md`, Part A); recorded demo video: _link on Day 7_.
+**Hosted demo:** <https://zabuni-ai.streamlit.app> (Streamlit Community Cloud, Groq; steps in `deploy/hf/DEPLOY.md`, Part A); recorded demo video: _link on Day 7_.
 
 1. **Ask.** Fill in a buyer, a supplier and/or years (or click an example) and optionally what to look for. A request with none of the three is
    *not run*: the app and the agent ask for a scope, because every tool would otherwise scan all of Kenya.
