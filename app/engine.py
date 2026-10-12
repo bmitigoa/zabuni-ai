@@ -160,8 +160,8 @@ def short_model(name: str | None) -> str:
 def describe_fallback(rec: dict[str, Any]) -> str:
     """One sentence for the run summary: which model took over and why (from the audit event, organisation ids already hidden)."""
     why = ("hit its quota or rate limit" if rec.get("cause") == "quota" else "kept returning output the agent could not use")
-    detail = " ".join((rec.get("reason") or "").split())
-    detail = f" ({detail[:140]}...)" if len(detail) > 140 else (f" ({detail})" if detail else "")
+    detail = " ".join((rec.get("reason") or "").split()) if rec.get("cause") == "quota" else ""    # a format failure's text is provider noise
+    detail = f" ({detail[:100]}...)" if len(detail) > 100 else (f" ({detail})" if detail else "")
     scope = "for the rest of the run" if rec.get("sticky", True) else "for that one call only"
     target = short_model(rec.get("to_model")) or "no other model"
     return f"Fell back to {target} {scope}, because {short_model(rec.get('from_model'))} {why}{detail}."

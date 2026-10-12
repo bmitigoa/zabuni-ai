@@ -43,7 +43,7 @@ def comparison_text(comp: dict[str, Any] | None, scope: dict[str, Any]) -> tuple
         lo, hi = comp["years"]
         bits.append(f"years {lo}" if lo == hi else f"years {lo}-{hi}")
     where = f" ({', '.join(bits)})" if bits else ""
-    median = f", median {kes(comp['median_kes'])}" if comp.get("median_kes") is not None else ""
+    median = f", median {kes(round(comp['median_kes']))}" if comp.get("median_kes") is not None else ""
     basis = f". Basis: {comp['basis']}" if comp.get("basis") else ""
     text = f"Compared against: {comp['n']:,} {comp['label']}{where}{median}{basis}"
     wider = bool((scope.get("buyer") and (comp.get("buyers") or 0) > 1)

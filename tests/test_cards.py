@@ -73,6 +73,7 @@ def test_the_run_summary_says_which_model_took_over_and_why():
     assert engine.describe_fallback(quota) == ("Fell back to gpt-oss-120b for the rest of the run, because qwen3.8-27b hit its quota or rate limit "
                                                "(provider quota exhausted).")
     assert "for that one call only" in engine.describe_fallback(fmt) and "could not use" in engine.describe_fallback(fmt)
+    assert "malformed" not in engine.describe_fallback(fmt)                                  # provider noise is left out of the sentence
     assert engine.short_model("groq:qwen/qwen3.8-27b") == "qwen3.8-27b" and engine.short_model("ollama:qwen2.5:7b") == "qwen2.5:7b"
 
 
