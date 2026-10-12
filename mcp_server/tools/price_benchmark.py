@@ -148,7 +148,8 @@ def compute_price_benchmark(title_keyword: KeywordArg = None, ocid: OcidArg = No
         years_seen = cohort["yr"].dropna()
         basis = [f"title words: {', '.join(tokens)}" if tokens else "no title-word filter", f"category {cat}" if cat else "any category",
                  f"buyer type {btype}" if btype else "any buyer type", f"years {', '.join(str(y) for y in yrs)}" if yrs else "any year"]
-        comparison = {"label": "similar awards", "n": n, "median_kes": med, "buyers": int(cohort["buyer_name"].nunique()),
+        label = "similar awards" if tokens else "awards of the same category (no usable title words, so a weak comparison)"
+        comparison = {"label": label, "n": n, "median_kes": med, "buyers": int(cohort["buyer_name"].nunique()),
                       "years": [int(years_seen.min()), int(years_seen.max())] if len(years_seen) else None,
                       "basis": "; ".join(basis), "note": cfg["signal_notes"]["compute_price_benchmark"]}
         if result["flagged"] and evidence and target:
@@ -159,7 +160,7 @@ def compute_price_benchmark(title_keyword: KeywordArg = None, ocid: OcidArg = No
                 subject={"kind": "award", "name": None, "awards": [award_detail(
                     target["ocid"], target["award_id"], target["buyer_name"], target["supplier_name"], target["award_date"],
                     target["amount"], target["title"])]},
-                metric=f"{ratio:.1f}x the median of {n} similar awards",
+                metric=f"{ratio:.1f}x the median of {n} {label}",
                 threshold=f"ratio to median >= {pb['flag_ratio_to_median']:g}x with >= {pb['min_comparables']} comparables",
                 comparison=comparison, hints=data_entry_hints(float(target["amount"]), ratio)))
     if result["flagged"] and not evidence:

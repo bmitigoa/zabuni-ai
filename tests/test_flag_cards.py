@@ -157,3 +157,13 @@ def test_the_graph_drops_a_flag_whose_award_is_outside_the_requested_scope(tmp_p
             return await run_agent(s.ctx, "Review awards in 2019", s.saver, {"years": [2019]})        # the award is dated 2022
     state = go(scenario)
     assert state["flags_created"] == [] and any("outside the requested scope" in n for n in state["notes"])
+
+
+def test_a_title_with_no_usable_words_is_not_called_a_set_of_similar_awards():
+    """Found on the hosted app: 'P157: MESHA -RIUMUKURUE' has no title word common enough, so the cohort was the whole category (35,573
+    awards). The card must say that, not 'similar awards'."""
+    flag = tools.compute_price_benchmark(ocid="ocds-5whusi-KeRRA/08/39/NYR/NYERITOWN/GOK/AIE22058/2-31-22|23-165",
+                                         award_id="20240528103637-84893")["result"]["flags"][0]
+    comp = flag["detail"]["signals"][0]["comparison"]
+    assert comp["label"].startswith("awards of the same category") and "weak comparison" in comp["label"] and "no title-word filter" in comp["basis"]
+    assert "similar awards" not in flag["detail"]["signals"][0]["metric"]
