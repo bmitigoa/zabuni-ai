@@ -87,7 +87,7 @@ def test_a_splitting_flag_lists_every_award_of_the_cluster_with_buyer_supplier_d
 def test_a_buyer_level_flag_names_the_buyer_not_an_award():
     flag = tools.detect_noncompetitive_method(limit=3)["result"]["flags"][0]
     assert flag["detail"]["subject"]["kind"] == "buyer" and flag["detail"]["subject"]["name"]
-    assert flag["detail"]["signals"][0]["comparison"]["label"] == "all Kenyan buyers"
+    assert flag["detail"]["signals"][0]["comparison"]["label"] == "awards of all Kenyan buyers"
 
 
 # ----------------------------------------------------------------------------- merging and scope

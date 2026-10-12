@@ -82,7 +82,7 @@ def detect_noncompetitive_method(buyer: BuyerArg = None, years: YearsArg = None,
             subject={"kind": "buyer", "name": name, "awards": []},
             metric=f"non-competitive share {stats['ratio_to_baseline']}x the national baseline ({stats['n_noncompetitive']} awards)",
             threshold=f"share >= {nc['flag_ratio_to_baseline']:g}x the national baseline and >= {nc['min_noncompetitive_awards']} such awards",
-            comparison={"label": "all Kenyan buyers", "n": baseline["n_awards"], "share": baseline["share_noncompetitive"],
+            comparison={"label": "awards of all Kenyan buyers", "n": baseline["n_awards"], "share": baseline["share_noncompetitive"],
                         "buyers": None, "years": None, "basis": "every buyer in the selected years", "note": "national baseline"})
 
     b = clean_text(buyer)
