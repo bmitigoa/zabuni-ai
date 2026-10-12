@@ -10,7 +10,8 @@ FLAGGED_OCID, FLAGGED_AWARD = "ocds-5whusi-4943", "20181030162550-2542"
 
 
 def check_flag(flag, evidence_pool):
-    assert set(flag) == {"rule", "summary", "severity_hint", "ocids", "evidence"}
+    assert set(flag) == {"rule", "summary", "severity_hint", "ocids", "evidence", "detail"}
+    assert set(flag["detail"]) == {"subject", "signals", "hints"} and flag["detail"]["signals"][0]["rule"] == flag["rule"]
     assert flag["evidence"] and flag["severity_hint"] in ("medium", "high")
     assert set(flag["ocids"]) == {e["ocid"] for e in flag["evidence"]}
     assert all(e in evidence_pool for e in flag["evidence"])            # a flag only cites evidence the tool returned

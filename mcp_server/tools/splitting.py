@@ -9,7 +9,7 @@ import pandas as pd
 from mcp_server.common import (ToolInputError, base_cte, buyer_problem, clean_text, clean_years, envelope, ev,
                                evidence_cap, frame, norm, rows, rules, year_filter)
 from mcp_server.registry import tool
-from mcp_server.toolkit import BuyerArg, LimitArg, MinAwardsArg, SupplierArg, ThresholdsArg, WindowArg, YearsArg, clamp, date_text, make_flag, ranking_limit, severity_hint
+from mcp_server.toolkit import award_detail, BuyerArg, LimitArg, MinAwardsArg, SupplierArg, ThresholdsArg, WindowArg, YearsArg, clamp, date_text, make_flag, ranking_limit, severity_hint
 
 SECONDS_PER_DAY = 86_400.0
 EPOCH = pd.Timestamp("1970-01-01")
@@ -145,7 +145,12 @@ def detect_splitting(buyer: BuyerArg = None, supplier: SupplierArg = None, windo
             f"{c['n_awards']} awards from {c['buyer'].strip()} to {c['supplier']} within {c['span_days']} days, each just "
             f"below KES {c['threshold_kes']:,.0f}, totalling KES {c['total_kes']:,.0f} "
             f"({c['total_over_threshold']}x the threshold)",
-            severity_hint(c["total_over_threshold"], 1.0), cluster_ev))
+            severity_hint(c["total_over_threshold"], 1.0), cluster_ev,
+            subject={"kind": "awards", "name": None, "awards": [award_detail(
+                a["ocid"], a["award_id"], c["buyer"], c["supplier"], a["award_date"], a["amount_kes"], a["title"]) for a in c["awards"]]},
+            metric=f"{c['n_awards']} awards in {c['span_days']} days totalling {c['total_over_threshold']}x the threshold",
+            threshold=f">= {min_n} awards to one supplier within {window} days, each just below an approval threshold, total above it",
+            hints=[]))
     if total == 0:
         warnings.append("No splitting pattern found with these parameters (this is not proof that none exists).")
     elif total > len(kept):

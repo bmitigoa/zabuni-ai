@@ -8,7 +8,7 @@ import numpy as np
 
 from mcp_server.common import (ToolInputError, base_cte, clean_text, clean_years, envelope, ev, frame, rows, rules)
 from mcp_server.registry import tool
-from mcp_server.toolkit import AmountArg, AutoKeywordsArg, AwardIdArg, BuyerTypeArg, CategoryArg, KeywordArg, OcidArg, YearsArg, buyer_types, categories, check_choice, make_flag, severity_hint
+from mcp_server.toolkit import award_detail, data_entry_hints, AmountArg, AutoKeywordsArg, AwardIdArg, BuyerTypeArg, CategoryArg, KeywordArg, OcidArg, YearsArg, buyer_types, categories, check_choice, make_flag, severity_hint
 
 QUARTILES = (25, 50, 75)      # the definition of quartiles, not a tunable threshold
 
@@ -108,7 +108,7 @@ def compute_price_benchmark(title_keyword: KeywordArg = None, ocid: OcidArg = No
             warnings.append("No title word is common enough to build a comparable set; cohort is the whole "
                             "category/scope, so similarity is weak.")
     extra = "".join(" AND contains(lower(title), ?)" for _ in tokens)
-    cohort = frame(f"WITH {cte} SELECT ocid, award_id, amount, title, buyer_name FROM a "
+    cohort = frame(f"WITH {cte} SELECT ocid, award_id, amount, title, buyer_name, yr FROM a "
                    f"WHERE amount IS NOT NULL{scope}{extra}", args + tokens)
     n = len(cohort)
     filters = {"category": cat, "buyer_type": btype, "years": yrs, "keywords_used": tokens, "keywords_source": source}
@@ -145,11 +145,23 @@ def compute_price_benchmark(title_keyword: KeywordArg = None, ocid: OcidArg = No
                                         "buyer": r.buyer_name, "amount_kes": float(r.amount)}
                                        for r in nearest.itertuples()]
         evidence += [ev(r.ocid, r.award_id, "award_amount", float(r.amount)) for r in nearest.itertuples()]
+        years_seen = cohort["yr"].dropna()
+        basis = [f"title words: {', '.join(tokens)}" if tokens else "no title-word filter", f"category {cat}" if cat else "any category",
+                 f"buyer type {btype}" if btype else "any buyer type", f"years {', '.join(str(y) for y in yrs)}" if yrs else "any year"]
+        comparison = {"label": "similar awards", "n": n, "median_kes": med, "buyers": int(cohort["buyer_name"].nunique()),
+                      "years": [int(years_seen.min()), int(years_seen.max())] if len(years_seen) else None,
+                      "basis": "; ".join(basis), "note": cfg["signal_notes"]["compute_price_benchmark"]}
         if result["flagged"] and evidence and target:
             result["flags"].append(make_flag(
                 "compute_price_benchmark",
                 f"{target['title']} ({target['ocid']}): {result['explanation']}",
-                severity_hint(ratio, float(pb["flag_ratio_to_median"])), list(evidence)))
+                severity_hint(ratio, float(pb["flag_ratio_to_median"])), list(evidence),
+                subject={"kind": "award", "name": None, "awards": [award_detail(
+                    target["ocid"], target["award_id"], target["buyer_name"], target["supplier_name"], target["award_date"],
+                    target["amount"], target["title"])]},
+                metric=f"{ratio:.1f}x the median of {n} similar awards",
+                threshold=f"ratio to median >= {pb['flag_ratio_to_median']:g}x with >= {pb['min_comparables']} comparables",
+                comparison=comparison, hints=data_entry_hints(float(target["amount"]), ratio)))
     if result["flagged"] and not evidence:
         result["flagged"] = False
     if insufficient:

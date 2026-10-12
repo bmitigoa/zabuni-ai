@@ -74,6 +74,6 @@ def log_run_usage(s: Session, seconds: float) -> dict[str, Any]:
     usage = {"model": s.llm.name, "llm_calls": totals["llm_calls"], "prompt_tokens": totals["prompt_tokens"],
              "completion_tokens": totals["completion_tokens"], "tokens": totals["total_tokens"],
              "cost_usd": round(totals["cost_usd"] or 0.0, 6), "tool_calls": s.ctx.calls, "seconds": round(seconds, 1),
-             "remaining_daily_quota_estimate": s.ledger.remaining(s.rules, provider, model)}
+             "remaining_daily_quota_estimate": s.ledger.remaining(s.rules, provider, model), "models": totals["models"]}
     s.audit.event("run_usage", **usage)
     return usage

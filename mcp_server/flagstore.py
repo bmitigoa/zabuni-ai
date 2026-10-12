@@ -30,6 +30,7 @@ SCHEMA = [
         dedupe_key VARCHAR NOT NULL, status VARCHAR NOT NULL, reviewer VARCHAR, decision_reason VARCHAR,
         decided_at TIMESTAMP)""",
     "ALTER TABLE flags ADD COLUMN IF NOT EXISTS clarification_rounds INTEGER DEFAULT 0",
+    "ALTER TABLE flags ADD COLUMN IF NOT EXISTS detail_json VARCHAR",
     """CREATE TABLE IF NOT EXISTS flag_decisions (
         decision_id VARCHAR PRIMARY KEY, flag_id VARCHAR NOT NULL, run_id VARCHAR, decided_at TIMESTAMP NOT NULL,
         decision VARCHAR NOT NULL, reason VARCHAR NOT NULL, reviewer_role VARCHAR NOT NULL, status_after VARCHAR NOT NULL)""",
@@ -72,13 +73,14 @@ def connect(read_only: bool = False) -> Iterator[duckdb.DuckDBPyConnection | Non
 
 
 COLUMNS = ["flag_id", "created_at", "run_id", "ocid", "rule", "severity", "explanation", "evidence_json", "status",
-           "reviewer", "decision_reason", "decided_at", "clarification_rounds"]
+           "reviewer", "decision_reason", "decided_at", "clarification_rounds", "detail_json"]
 
 
 def row_to_flag(row: tuple[Any, ...]) -> dict[str, Any]:
     """A flags row as a dict with the evidence parsed."""
     flag = dict(zip(COLUMNS, row))
     flag["evidence"] = json.loads(flag.pop("evidence_json"))
+    flag["detail"] = json.loads(flag.pop("detail_json") or "null") or {"subject": {"kind": "awards", "name": None, "awards": []}, "signals": [], "hints": []}
     flag["created_at"] = str(flag["created_at"])
     flag["decided_at"] = str(flag["decided_at"]) if flag["decided_at"] else None
     flag["clarification_rounds"] = int(flag["clarification_rounds"] or 0)

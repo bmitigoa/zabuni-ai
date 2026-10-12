@@ -92,7 +92,36 @@ DEFAULT_RULES: dict[str, Any] = {
         "noncompetitive_ranking": 3,          # non-open awards cited per ranked buyer
         "supplier_awards": 3,                 # largest awards cited per supplier
     },
+    "data_quality": {
+        # Rule-based hints that an amount may be a data-entry error (extreme or placeholder-looking). Provisional like every threshold.
+        "suspect_ratio_to_median": 20.0,      # an award this many times its comparison median gets the hint
+        "round_number_min_amount_kes": 10000000,   # a round amount (a multiple of the modulus) at least this large gets the hint
+        "round_number_modulus_kes": 1000000,
+        "nines_run_min_digits": 6,            # an amount ending in this many nines (e.g. 198,999,999) looks like a placeholder
+        "hint": "Possible data-entry error: verify the amount against the source document before relying on this flag.",
+    },
+    "validation": {
+        # Thresholds are not yet validated by a practitioner (docs/user_engagement.md). A rule moves into `validated_rules` only after a session.
+        "validated_rules": [],
+        "label": "provisional",
+        "note": "Threshold not yet validated by a practitioner.",
+    },
+    "flag_caveats": {
+        # Lawful explanations a reviewer must rule out before deciding (shown on the card and in the memo). Not findings of wrongdoing.
+        "detect_splitting": "Several awards to one supplier can be separate lots, sections or items of ONE tender, or call-offs under a framework agreement: check the tender documents before treating this as splitting.",
+        "detect_noncompetitive_method": "Direct and restricted procurement are lawful in defined cases (emergency, a single available source, framework call-offs): check the recorded justification.",
+        "compute_price_benchmark": "Comparable awards share title words and category only; the data has no item detail, so the goods or works may differ.",
+        "detect_price_anomalies": "A cohort mixes different goods and works; an extreme value may also be a data-entry error.",
+        "supplier_concentration": "A dominant supplier can be lawful (a specialised market, a framework, a long contract): check how the awards were competed.",
+    },
+    "signal_notes": {
+        # Why two signals on the SAME award can show different multiples: they compare it with different sets of awards.
+        "compute_price_benchmark": "similar awards: they share the award's title words and category, from any buyer",
+        "detect_price_anomalies": "its cohort: every award of the same procurement category and buyer type",
+        "different_sets": "The multiples differ because the two checks compare the award with different sets of awards.",
+    },
     "flags": {
+        "max_detail_chars": 20000,            # flag_finding rejects a `detail` (flagged awards, signals, hints) larger than this
         "severities": ["low", "medium", "high"],
         "high_multiple": 2.0,                 # a metric >= 2x its flag threshold gets severity_hint 'high'
         "min_explanation_chars": 20,          # flag_finding rejects shorter explanations

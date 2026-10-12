@@ -21,7 +21,8 @@ if str(ROOT) not in sys.path:
 
 import streamlit as st  # noqa: E402
 
-from app import bootstrap, engine  # noqa: E402
+from app import bootstrap, cards, engine  # noqa: E402
+from app.examples import EXAMPLES  # noqa: E402
 from app.memo_pdf import memo_to_pdf  # noqa: E402
 from agent.settings import SettingsError, load_settings  # noqa: E402
 from mcp_server.records import release_record  # noqa: E402
@@ -34,14 +35,6 @@ SEVERITY_COLOUR = {"high": "red", "medium": "orange", "low": "blue"}
 STATUS_LABEL = {"pending_review": "awaiting your decision", "approved": "approved", "rejected": "rejected",
                 "clarification_requested": "question sent to the agent"}
 DECISION_CHOICES = {"No decision yet": None, "Approve": "approve", "Reject": "reject", "Clarify (ask the agent)": "clarify"}
-EXAMPLES = [
-    {"label": "Makueni County: splitting and price anomalies, 2022-2023", "buyer": "Makueni County Government", "supplier": "",
-     "years": [2022, 2023], "text": "Review awards for contract splitting and price anomalies."},
-    {"label": "Kenya Rural Roads Authority: supplier concentration, 2023", "buyer": "Kenya Rural Roads Authority", "supplier": "",
-     "years": [2023], "text": "Check supplier concentration and non-competitive procurement."},
-    {"label": "One supplier: Wavecrest Limited across buyers", "buyer": "", "supplier": "Wavecrest Limited",
-     "years": [], "text": "List this supplier's awards and look for splitting."},
-]
 
 
 # ----------------------------------------------------------------------------- first start: secrets and data
@@ -129,6 +122,8 @@ def init_state() -> None:
     ss.setdefault("run_id", None)
     ss.setdefault("absorbed", True)
     ss.setdefault("tokens_used", 0)
+    ss.setdefault("models_used", [])      # the models that actually answered in this run (a fallback adds one)
+    ss.setdefault("fallbacks", [])
     ss.setdefault("f_buyer", "")
     ss.setdefault("f_supplier", "")
     ss.setdefault("f_years", [])
@@ -144,6 +139,8 @@ def absorb_finished_job() -> None:
         ss.run_id = job.run_id
         ss.absorbed = True
         ss.tokens_used = (job.result.get("usage") or {}).get("tokens", ss.tokens_used)
+        ss.models_used = job.result.get("models_used") or ss.models_used
+        ss.fallbacks = ss.fallbacks + job.result.get("fallbacks", [])
 
 
 # ----------------------------------------------------------------------------- sections
@@ -178,6 +175,7 @@ def start_run(rules: dict) -> None:
         quota_message(decision.message)
         return
     ss.view, ss.run_id, ss.absorbed = None, None, False
+    ss.models_used, ss.fallbacks = [], []
     ss.job = engine.start_run(get_settings(), ss.visitor_id, query or "Review the awards in this scope.", hint)
     st.rerun()
 
@@ -197,26 +195,53 @@ def usage_row(usage: dict | None, model: str | None) -> None:
     c1.metric("LLM tokens (whole run)", f"{usage['tokens']:,}")
     c2.metric("Tool calls", usage["tool_calls"])
     c3.metric("Estimated cost", f"${usage['cost_usd']:.4f}", help="Estimate from a dated price list; the free tier and local models cost nothing.")
-    c4.metric("Model", (model or usage.get("model") or "").split(":")[-1])
+    used = [engine.short_model(m) for m in st.session_state.models_used] or [engine.short_model(model or usage.get("model"))]
+    c4.metric("Model(s) used", ", ".join(used))
 
 
-def evidence_block(flag: dict) -> None:
-    items = flag["evidence"]
-    lines = [f"- [`{e['ocid']}`](?record={quote(e['ocid'], safe='')}) · award `{e['award_id']}` · {e['field']} = {e['value']}" for e in items]
-    st.markdown("\n".join(lines[:EVIDENCE_SHOWN]))
-    if len(lines) > EVIDENCE_SHOWN:
-        with st.expander(f"Show all {len(lines)} cited records"):
-            st.markdown("\n".join(lines[EVIDENCE_SHOWN:]))
+def record_link(ocid: str) -> str:
+    return f"[`{ocid}`](?record={quote(ocid, safe='')})"
 
 
-def flag_card(flag: dict) -> None:
+def evidence_lines(items: list[dict]) -> list[str]:
+    return [f"- {record_link(e['ocid'])} · award `{e['award_id']}` · {e['field']} = {e['shown']}" for e in items]
+
+
+def flag_card(flag: dict, scope: dict) -> None:
+    c = cards.card(flag, scope)
     with st.container(border=True):
-        colour = SEVERITY_COLOUR.get(flag["severity"], "gray")
-        st.markdown(f":{colour}[**{flag['severity'].upper()}**] · `{flag['rule']}` · {STATUS_LABEL.get(flag['status'], flag['status'])} · `{flag['flag_id']}`")
-        st.write(flag["explanation"])
-        evidence_block(flag)
-        for c in flag.get("clarifications", []):
-            st.info(f"**Question:** {c.get('question')}  \n**Agent's answer:** {c.get('response') or '(no answer yet)'}", icon=":material/help:")
+        colour = SEVERITY_COLOUR.get(c["severity"], "gray")
+        merged = f" · {len(c['signals'])} signals on one award" if len(c["signals"]) > 1 else ""
+        st.markdown(f":{colour}[**{c['severity'].upper()}**]{merged} · {STATUS_LABEL.get(c['status'], c['status'])} · `{c['flag_id']}`"
+                    + (" · :orange-badge[provisional thresholds]" if c["provisional"] else ""))
+        if c["flagged"]:
+            st.markdown("**Flagged " + ("award**" if len(c["flagged"]) == 1 else f"awards ({len(c['flagged'])})**"))
+            for item in c["flagged"]:
+                st.markdown(f"- {item['line']}  \n  {record_link(item['ocid'])}")
+        elif c["subject_name"]:
+            st.markdown(f"**Flagged {c['subject_kind']}:** {c['subject_name']}")
+        for h in c["hints"]:
+            st.warning(h, icon=":material/edit_note:")
+        st.markdown("**Signals**")
+        for sig in c["signals"]:
+            st.markdown(f"- **{sig['title']}:** {sig['metric']}" + (f"  \n  _Threshold: {sig['threshold']}_" if sig["threshold"] else ""))
+            if sig["comparison"]:
+                st.caption(sig["comparison"] + ("  — **wider than your request**: it also covers buyers or years you did not name."
+                                                if sig["comparison_wider"] else ""))
+        if c["comparison_note"]:
+            st.caption("Why the multiples differ: " + c["comparison_note"])
+        for caveat in dict.fromkeys(sig["caveat"] for sig in c["signals"] if sig.get("caveat")):
+            st.caption("Before you decide: " + caveat)
+        st.caption("Summary: " + c["explanation"])
+        own = evidence_lines(c["own_evidence"])
+        if own:
+            with st.expander(f"Cited records of the flagged " + ("award" if c["flagged"] else "subject") + f" ({len(own)})"):
+                st.markdown("\n".join(own))
+        if c["comparison_evidence"]:
+            with st.expander(f"Comparison awards cited ({len(c['comparison_evidence'])}; not the flagged award)"):
+                st.markdown("\n".join(evidence_lines(c["comparison_evidence"])))
+        for cl in c["clarifications"]:
+            st.info(f"**Question:** {cl.get('question')}  \n**Agent's answer:** {cl.get('response') or '(no answer yet)'}", icon=":material/help:")
 
 
 def risk_board_and_review(rules: dict, state: dict) -> None:
@@ -235,7 +260,7 @@ def risk_board_and_review(rules: dict, state: dict) -> None:
     decided: dict[str, tuple[str, str]] = {}
     with st.form("review"):
         for flag in flags:
-            flag_card(flag)
+            flag_card(flag, state.get("scope") or {})
             if flag["status"] == "pending_review":
                 c1, c2 = st.columns([1, 3])
                 choice = c1.radio("Decision", list(DECISION_CHOICES), key=f"d_{flag['flag_id']}", label_visibility="collapsed")
@@ -294,7 +319,13 @@ def sidebar(rules: dict) -> None:
     with st.sidebar:
         st.markdown("### Zabuni AI")
         st.caption("Agentic decision support for public-procurement review. Data: PPRA Kenya OCDS snapshot (8 Oct 2026, frozen).")
-        st.markdown(f"**Model:** `{s.model}` via {s.provider}")
+        used = [engine.short_model(m) for m in st.session_state.models_used]
+        if used:
+            st.markdown("**Model used:** " + ", ".join(f"`{m}`" for m in used))
+            if engine.short_model(f"{s.provider}:{s.model}") not in used:
+                st.caption(f"Configured: `{s.model}` via {s.provider}")
+        else:
+            st.markdown(f"**Model:** `{s.model}` via {s.provider} (configured)")
         st.markdown(f"**Session tokens:** {st.session_state.tokens_used:,}")
         url = video_url()
         if url:
@@ -356,6 +387,8 @@ def main() -> None:
     st.write(state.get("summary") or "")
     for reason in state.get("stop_reasons", []):
         st.caption(f"The run stopped early: {reason}")
+    for rec in st.session_state.fallbacks:
+        st.warning(engine.describe_fallback(rec), icon=":material/swap_horiz:")
     risk_board_and_review(rules, state)
     memo_section(state, view.get("usage"), view.get("model"))
     if not state.get("memo_markdown"):

@@ -95,7 +95,8 @@ def _finish(job: Job, session: Any, state: dict[str, Any], started: float) -> No
     usage = log_run_usage(session, time.time() - started)
     payload = pause_payload(state)
     job.result = {"state": {k: v for k, v in state.items() if k != "__interrupt__"}, "payload": payload, "usage": usage,
-                  "model": session.llm.name, "rules_review": session.rules["review"]}
+                  "model": session.llm.name, "models_used": usage["models"] or [session.llm.name],
+                  "fallbacks": [rec for kind, rec in job.events if kind == "llm_fallback"], "rules_review": session.rules["review"]}
     if state.get("scope_request"):
         job.status = "scope"
     else:
@@ -149,6 +150,21 @@ def make_guard(settings: Settings, rules: dict[str, Any]) -> DemoGuard:
     """One guard per process: runs per visitor per hour, and the estimated daily quota of the hosted model."""
     ledger = UsageLedger(Path(settings.logs_dir) / "llm_usage.jsonl")
     return DemoGuard(rules, ledger, settings.provider, settings.model)
+
+
+def short_model(name: str | None) -> str:
+    """'groq:openai/gpt-oss-120b' -> 'gpt-oss-120b'; 'groq:qwen/qwen3.8-27b' -> 'qwen3.8-27b'."""
+    return (name or "").split(":", 1)[-1].split("/")[-1]
+
+
+def describe_fallback(rec: dict[str, Any]) -> str:
+    """One sentence for the run summary: which model took over and why (from the audit event, organisation ids already hidden)."""
+    why = ("hit its quota or rate limit" if rec.get("cause") == "quota" else "kept returning output the agent could not use")
+    detail = " ".join((rec.get("reason") or "").split())
+    detail = f" ({detail[:140]}...)" if len(detail) > 140 else (f" ({detail})" if detail else "")
+    scope = "for the rest of the run" if rec.get("sticky", True) else "for that one call only"
+    target = short_model(rec.get("to_model")) or "no other model"
+    return f"Fell back to {target} {scope}, because {short_model(rec.get('from_model'))} {why}{detail}."
 
 
 def summarise_event(kind: str, rec: dict[str, Any]) -> str | None:

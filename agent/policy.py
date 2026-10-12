@@ -327,10 +327,89 @@ def guard_findings(drafts: list[dict[str, Any]], candidates: list[dict[str, Any]
             "rule": rule, "evidence": evidence, "ocid": evidence[0]["ocid"], "ocids": sorted({e["ocid"] for e in evidence}),
             "severity": severity if severity in severities else (cand or {}).get("severity_hint", severities[len(severities) // 2]),
             "explanation": text if len(text) >= min_chars else (cand or {}).get("summary", text),
-            "candidate_id": cand["id"] if cand else None, "source": "candidate" if cand else "model_extra"})
+            "candidate_id": cand["id"] if cand else None, "source": "candidate" if cand else "model_extra",
+            "detail": (cand or {}).get("detail")})
     for c in candidates:
         if c["id"] not in used:
             accepted.append({"rule": c["tool"], "evidence": c["evidence"], "ocid": c["evidence"][0]["ocid"], "ocids": c["ocids"],
                              "severity": c["severity_hint"], "explanation": c["summary"], "candidate_id": c["id"],
-                             "source": "candidate_default"})
+                             "source": "candidate_default", "detail": c.get("detail")})
     return accepted, dropped
+
+
+# ----------------------------------------------------------------------------- one card per award, and scope checks
+def _single_award_key(finding: dict[str, Any]) -> tuple[str, str] | None:
+    subject = ((finding.get("detail") or {}).get("subject")) or {}
+    awards = subject.get("awards") or []
+    if subject.get("kind") == "award" and len(awards) == 1:
+        return awards[0]["ocid"], awards[0]["award_id"]
+    return None
+
+
+def merge_same_award(findings: list[dict[str, Any]], severities: list[str], different_sets_note: str) -> tuple[list[dict[str, Any]], int]:
+    """Merge findings about the SAME award into one: signals listed together, evidence united, the highest severity kept.
+
+    Two checks that flag one award (a price benchmark and a price anomaly) are one thing for a reviewer to decide. When the
+    signals compare the award with differently sized sets of awards the card says why the multiples differ.
+    Returns (findings, number of findings absorbed into another)."""
+    rank = {s: i for i, s in enumerate(severities)}
+    out: list[dict[str, Any]] = []
+    index: dict[tuple[str, str], int] = {}
+    absorbed = 0
+    for f in findings:
+        key = _single_award_key(f)
+        if key is None or key not in index:
+            if key is not None:
+                index[key] = len(out)
+            out.append(f)
+            continue
+        base = out[index[key]]
+        absorbed += 1
+        seen = {(e["ocid"], e["award_id"], e["field"], json.dumps(e["value"], default=str)) for e in base["evidence"]}
+        base["evidence"] = base["evidence"] + [e for e in f["evidence"]
+                                               if (e["ocid"], e["award_id"], e["field"], json.dumps(e["value"], default=str)) not in seen]
+        base["ocids"] = sorted({e["ocid"] for e in base["evidence"]})
+        if rank.get(f["severity"], 0) > rank.get(base["severity"], 0):
+            base["severity"] = f["severity"]
+        d, extra = base["detail"], f["detail"]
+        d["signals"] = d["signals"] + extra["signals"]
+        d["hints"] = sorted(set(d["hints"]) | set(extra["hints"]))
+        sizes = {(s.get("comparison") or {}).get("n") for s in d["signals"]}
+        if len(sizes - {None}) > 1:
+            d["comparison_note"] = different_sets_note
+        base["merged_from"] = base.get("merged_from", 1) + 1
+    return out, absorbed
+
+
+def _name_in(text: str | None, wanted: str) -> bool:
+    words = _words(wanted)
+    return bool(words) and sum(w in (text or "").lower() for w in words) / len(words) >= NAME_MATCH_SHARE
+
+
+def scope_problems(finding: dict[str, Any], scope: dict[str, Any]) -> list[str]:
+    """Why a finding's FLAGGED awards fall outside the requested scope (an empty list = inside). Comparison sets may be wider;
+    the awards a flag is about may not. A buyer-level flag is checked on its buyer name."""
+    subject = ((finding.get("detail") or {}).get("subject")) or {}
+    problems: list[str] = []
+    buyer, supplier, years = (scope.get("buyer") or "").strip(), (scope.get("supplier") or "").strip(), scope.get("years") or []
+    if subject.get("kind") == "buyer":
+        if buyer and not _name_in(subject.get("name"), buyer):
+            problems.append(f"buyer {subject.get('name')!r} is not the requested buyer")
+        return problems
+    for a in subject.get("awards") or []:
+        if buyer and not _name_in(a.get("buyer"), buyer):
+            problems.append(f"award {a['ocid']}: buyer {a.get('buyer')!r} is not the requested buyer")
+        if supplier and not _name_in(a.get("supplier"), supplier):
+            problems.append(f"award {a['ocid']}: supplier {a.get('supplier')!r} is not the requested supplier")
+        if years and a.get("date") and int(str(a["date"])[:4]) not in years:
+            problems.append(f"award {a['ocid']}: dated {a['date']}, outside the requested years")
+    return problems
+
+
+def drop_out_of_scope(findings: list[dict[str, Any]], scope: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Split findings into (inside the scope, [{finding, problems}] outside it)."""
+    kept, dropped = [], []
+    for f in findings:
+        problems = scope_problems(f, scope)
+        (dropped if problems else kept).append({"finding": f, "problems": problems} if problems else f)
+    return kept, dropped

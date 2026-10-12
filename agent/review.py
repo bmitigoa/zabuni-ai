@@ -18,16 +18,32 @@ from agent.llm import LLMError
 from agent.run import Printer
 from agent.session import log_run_usage, open_session
 from agent.settings import SettingsError, load_settings
+from mcp_server.fmt import fmt_value, kes
 
 DECISION_KEYS = {"a": "approve", "r": "reject", "c": "clarify"}
 
 
 def show_flag(flag: dict[str, Any]) -> str:
-    """Plain-text view of one pending flag: rule, severity, explanation, cited records and any earlier clarifications."""
-    lines = [f"\n=== {flag['flag_id']}  [{flag['severity']}]  {flag['rule']}", f"    {flag['explanation']}",
-             f"    cited records ({flag['n_evidence']} evidence item(s), first {len(flag['evidence'])} shown):"]
+    """Plain-text view of one pending flag: the flagged award(s), the signals with their provisional thresholds, any data-entry
+    hint, the cited records and earlier clarifications."""
+    detail = flag.get("detail") or {}
+    subject = detail.get("subject") or {}
+    lines = [f"\n=== {flag['flag_id']}  [{flag['severity']}]  {flag['rule']}", f"    {flag['explanation']}"]
+    for a in subject.get("awards") or []:
+        lines.append(f"    flagged award: {a.get('buyer')} | {a.get('supplier')} | {a.get('date')} | "
+                     f"{kes(a['amount_kes']) if a.get('amount_kes') is not None else 'no amount'} | {a['ocid']}")
+    if subject.get("name"):
+        lines.append(f"    flagged {subject.get('kind')}: {subject['name']}")
+    for sg in detail.get("signals") or []:
+        comp = sg.get("comparison") or {}
+        lines.append(f"    signal: {sg.get('metric') or sg['summary']} [{sg.get('threshold') or 'threshold n/a'}]"
+                     + (f" compared against {comp['n']:,} {comp['label']}" if comp.get("n") else ""))
+    if detail.get("comparison_note"):
+        lines.append(f"    note: {detail['comparison_note']}")
+    lines += [f"    HINT: {h}" for h in detail.get("hints") or []]
+    lines.append(f"    cited records ({flag['n_evidence']} evidence item(s), first {len(flag['evidence'])} shown):")
     for e in flag["evidence"]:
-        lines.append(f"      ocid {e['ocid']} | award {e['award_id']} | {e['field']} = {e['value']}")
+        lines.append(f"      ocid {e['ocid']} | award {e['award_id']} | {e['field']} = {fmt_value(e['field'], e['value'])}")
     for c in flag.get("clarifications", []):
         lines.append(f"    earlier question: {c.get('question')}\n    answer from the agent: {c.get('response')}")
     return "\n".join(lines)

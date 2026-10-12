@@ -7,7 +7,7 @@ import pandas as pd
 
 from mcp_server.common import (base_cte, buyer_problem, clean_text, clean_years, envelope, ev, frame, rules, year_filter)
 from mcp_server.registry import tool
-from mcp_server.toolkit import BuyerArg, LimitArg, YearsArg, make_flag, ranking_limit, severity_hint
+from mcp_server.toolkit import award_detail, BuyerArg, LimitArg, YearsArg, make_flag, ranking_limit, severity_hint
 
 
 def _method_stats(df: pd.DataFrame, direct: list[str], restricted: list[str]) -> dict[str, Any]:
@@ -78,7 +78,12 @@ def detect_noncompetitive_method(buyer: BuyerArg = None, years: YearsArg = None,
             "detect_noncompetitive_method",
             f"{name}: direct/restricted share {stats['share_noncompetitive']:.1%} vs national "
             f"{baseline['share_noncompetitive']:.1%} ({stats['ratio_to_baseline']}x, {stats['n_noncompetitive']} awards)",
-            severity_hint(stats["ratio_to_baseline"], float(nc["flag_ratio_to_baseline"])), cites)
+            severity_hint(stats["ratio_to_baseline"], float(nc["flag_ratio_to_baseline"])), cites,
+            subject={"kind": "buyer", "name": name, "awards": []},
+            metric=f"non-competitive share {stats['ratio_to_baseline']}x the national baseline ({stats['n_noncompetitive']} awards)",
+            threshold=f"share >= {nc['flag_ratio_to_baseline']:g}x the national baseline and >= {nc['min_noncompetitive_awards']} such awards",
+            comparison={"label": "all Kenyan buyers", "n": baseline["n_awards"], "share": baseline["share_noncompetitive"],
+                        "buyers": None, "years": None, "basis": "every buyer in the selected years", "note": "national baseline"})
 
     b = clean_text(buyer)
     if b:

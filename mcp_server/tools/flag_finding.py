@@ -22,7 +22,7 @@ from mcp_server.registry import TOOLS, tool
 
 @tool(read_only=False, role="flag_writer")
 def flag_finding(ocid: str, rule: str, severity: str, explanation: str, evidence: list[dict[str, Any]],
-                 run_id: str | None = None) -> dict[str, Any]:
+                 run_id: str | None = None, detail: dict[str, Any] | None = None) -> dict[str, Any]:
     """Record a finding as a flag awaiting human review. Call it only for a finding supported by tool results.
 
     `ocid` is the main OCDS process the flag is about and must appear in `evidence`. `rule` is the name of the
@@ -30,7 +30,9 @@ def flag_finding(ocid: str, rule: str, severity: str, explanation: str, evidence
     plain-language statement of what was found (at least [[flags.min_explanation_chars]] characters); it must not
     recommend or award anything. `evidence` is a non-empty list of {ocid, award_id, field, value} items copied from the
     evidence of tool results; every cited award must exist in the OCDS data or the flag is rejected. `run_id` links
-    the flag to an audit-log run. The flag is stored with status [[flags.status_pending]]: a human reviewer decides
+    the flag to an audit-log run. `detail` (optional) is the structured description made by the analysis tools (flagged awards, signals with
+    their thresholds and comparison sets, data-entry hints); it is stored so the review screens can show it. A flag about one award is
+    identified by that award, so two checks that flag the same award become one flag. The flag is stored with status [[flags.status_pending]]: a human reviewer decides
     whether it enters the memo. Calling it again with the same rule and evidence returns the existing flag with its
     current status (including a previous rejection) instead of creating a duplicate.
     """
@@ -51,9 +53,22 @@ def flag_finding(ocid: str, rule: str, severity: str, explanation: str, evidence
     if not oc or oc not in {e["ocid"] for e in ev_items}:
         raise ToolInputError("ocid must be one of the ocids cited in evidence.")
     flagstore.verify_citations(ev_items)
+    detail_text = None
+    if detail is not None:
+        if not isinstance(detail, dict):
+            raise ToolInputError("detail must be an object (the structured description made by the analysis tools).")
+        detail_text = json.dumps(detail, default=str)
+        if len(detail_text) > int(fl["max_detail_chars"]):
+            raise ToolInputError(f"detail is too large (more than {fl['max_detail_chars']} characters).")
+    subject = (detail or {}).get("subject") or {}
+    one_award = subject.get("kind") == "award" and len(subject.get("awards") or []) == 1
 
-    key = hashlib.sha1(json.dumps([spec.name, sorted(json.dumps(e, sort_keys=True, default=str) for e in ev_items)]
-                                  ).encode("utf-8")).hexdigest()
+    if one_award:                                   # identity of a one-award flag = the award, whichever check raised it
+        a = subject["awards"][0]
+        key = hashlib.sha1(json.dumps(["award", a["ocid"], a["award_id"]]).encode("utf-8")).hexdigest()
+    else:
+        key = hashlib.sha1(json.dumps([spec.name, sorted(json.dumps(e, sort_keys=True, default=str) for e in ev_items)]
+                                      ).encode("utf-8")).hexdigest()
     try:
         with flagstore.connect() as con:
             existing = con.execute("SELECT flag_id, status, decision_reason FROM flags WHERE dedupe_key = ?", [key]).fetchone()
@@ -67,9 +82,9 @@ def flag_finding(ocid: str, rule: str, severity: str, explanation: str, evidence
             else:
                 flag_id = "flag_" + uuid.uuid4().hex[:flagstore.ID_HEX_CHARS]
                 con.execute("INSERT INTO flags (flag_id, created_at, run_id, ocid, rule, severity, explanation, "
-                            "evidence_json, dedupe_key, status, clarification_rounds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+                            "evidence_json, dedupe_key, status, clarification_rounds, detail_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)",
                             [flag_id, datetime.now(timezone.utc).replace(tzinfo=None), run_id, oc, spec.name, sev, text,
-                             json.dumps(ev_items, default=str), key, fl["status_pending"]])
+                             json.dumps(ev_items, default=str), key, fl["status_pending"], detail_text])
                 result = {"flag_id": flag_id, "status": fl["status_pending"], "created": True, "ocid": oc, "rule": spec.name}
                 warnings = []
     except duckdb.IOException as exc:

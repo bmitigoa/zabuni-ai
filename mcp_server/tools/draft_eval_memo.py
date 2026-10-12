@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from mcp_server import flagstore
+from mcp_server.fmt import fmt_value, kes
 from mcp_server.common import ToolInputError, clean_text, envelope, rules
 from mcp_server.registry import tool
 
@@ -48,10 +49,32 @@ def build_memo(approved: list[dict[str, Any]], counts: dict[str, int], con: Any,
         out += ["", "## How this run ended", ""] + [f"- {x}" for x in notes]
     out += ["", "## Approved findings", ""]
     for i, f in enumerate(approved, 1):
-        out += [f"### {i}. {f['rule']} (severity {f['severity']}), flag `{f['flag_id']}`", "", f["explanation"], "",
-                "Cited OCDS records:"]
+        detail = f.get("detail") or {}
+        subject = detail.get("subject") or {}
+        out += [f"### {i}. {f['rule']} (severity {f['severity']}), flag `{f['flag_id']}`", "", f["explanation"], ""]
+        flagged = subject.get("awards") or []
+        if flagged:
+            out += ["Flagged " + ("award:" if len(flagged) == 1 else "awards:")]
+            out += [f"- {a.get('buyer') or 'unknown buyer'}; {a.get('supplier') or 'no supplier named'}; {a.get('date') or 'no date'}; "
+                    f"{kes(a['amount_kes']) if a.get('amount_kes') is not None else 'no amount'}; ocid `{a['ocid']}`" for a in flagged]
+            out.append("")
+        elif subject.get("name"):
+            out += [f"Flagged {subject.get('kind')}: {subject['name']}", ""]
+        signals = detail.get("signals") or []
+        if signals:
+            out.append("Signals (thresholds are provisional unless marked validated):")
+            for sg in signals:
+                comp = sg.get("comparison") or {}
+                where = f" Compared against {comp['n']:,} {comp['label']}." if comp.get("n") else ""
+                out.append(f"- {sg.get('metric') or sg['summary']}; threshold: {sg.get('threshold') or 'n/a'}.{where}")
+            if detail.get("comparison_note"):
+                out.append(f"- {detail['comparison_note']}")
+            out += [f"- Lawful explanations to rule out: {c}" for c in dict.fromkeys(sg["caveat"] for sg in signals if sg.get("caveat"))]
+            out.append("")
+        out += [f"Note: {h}" for h in detail.get("hints") or []] + ([""] if detail.get("hints") else [])
+        out.append("Cited OCDS records:")
         for e in f["evidence"][:listed]:
-            out.append(f"- ocid `{e['ocid']}`, award `{e['award_id']}`, {e['field']} = {e['value']}")
+            out.append(f"- ocid `{e['ocid']}`, award `{e['award_id']}`, {e['field']} = {fmt_value(e['field'], e['value'])}")
         if len(f["evidence"]) > listed:
             out.append(f"- ... and {len(f['evidence']) - listed} more cited record(s) stored with the flag")
         out += ["", "Reviewer decisions:"]

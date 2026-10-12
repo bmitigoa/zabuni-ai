@@ -9,7 +9,7 @@ from sklearn.ensemble import IsolationForest
 
 from mcp_server.common import (base_cte, buyer_problem, clean_text, clean_years, envelope, ev, frame, rules, year_filter)
 from mcp_server.registry import tool
-from mcp_server.toolkit import (BuyerArg, BuyerTypeArg, CategoryArg, KeywordArg, LimitArg, YearsArg, buyer_types, categories,
+from mcp_server.toolkit import (award_detail, data_entry_hints, date_text, BuyerArg, BuyerTypeArg, CategoryArg, KeywordArg, LimitArg, YearsArg, buyer_types, categories,
                                 check_choice, make_flag, ranking_limit, severity_hint)
 
 ANOMALY_LABEL = -1            # scikit-learn's label for an outlier in IsolationForest.predict
@@ -74,7 +74,7 @@ def detect_price_anomalies(buyer: BuyerArg = None, category: CategoryArg = None,
         conds.append("contains(lower(title), ?)"); args.append(kw.lower())
     where = "".join(f" AND {c}" for c in conds)
     df = frame(f"WITH {base_cte(valid_only=True)} SELECT ocid, award_id, buyer_name, buyer_norm, supplier_name, title, category, "
-               f"buyer_type, amount FROM a WHERE category IS NOT NULL AND buyer_type IS NOT NULL{where}{year_filter(yrs)}", args)
+               f"buyer_type, amount, award_date, yr FROM a WHERE category IS NOT NULL AND buyer_type IS NOT NULL{where}{year_filter(yrs)}", args)
     if df.empty:
         warnings.append("No awards with valid amounts in scope.")
         return envelope({"cohorts": [], "anomalies": [], "flags": []}, [], params, warnings)
@@ -103,6 +103,14 @@ def detect_price_anomalies(buyer: BuyerArg = None, category: CategoryArg = None,
         nearest = others.assign(d=(others["amount"] - r.median).abs()).sort_values(["d", "ocid", "award_id"]).head(int(pa["comparables_cited"]))
         cites = [ev(r.ocid, r.award_id, "award_amount", float(r.amount))] + \
                 [ev(x.ocid, x.award_id, "award_amount", float(x.amount)) for x in nearest.itertuples()]
+        years_seen = group["yr"].dropna()
+        basis = [f"category {r.category}", f"buyer type {r.buyer_type}", f"years {', '.join(str(y) for y in yrs)}" if yrs else "any year"]
+        if kw:
+            basis.append(f"title contains '{kw}'")
+        comparison = {"label": "awards of the same category and buyer type", "n": n - 1, "median_kes": float(r.median),
+                      "buyers": int(group["buyer_name"].nunique()),
+                      "years": [int(years_seen.min()), int(years_seen.max())] if len(years_seen) else None,
+                      "basis": "; ".join(basis), "note": cfg["signal_notes"]["detect_price_anomalies"]}
         out.append({"ocid": r.ocid, "award_id": r.award_id, "title": r.title, "buyer": (r.buyer_name or "").strip(),
                     "supplier": r.supplier_name, "amount_kes": float(r.amount), "ratio_to_median": round(float(r.ratio), 2),
                     "anomaly_score": round(float(r.anomaly_score), 4), "explanation": explanation,
@@ -112,7 +120,12 @@ def detect_price_anomalies(buyer: BuyerArg = None, category: CategoryArg = None,
                                           for x in nearest.itertuples()]})
         evidence += cites
         flags.append(make_flag("detect_price_anomalies", f"{r.title} ({r.ocid}): {explanation}",
-                               severity_hint(float(r.ratio), float(pa["min_ratio_to_median"])), cites))
+                               severity_hint(float(r.ratio), float(pa["min_ratio_to_median"])), cites,
+                               subject={"kind": "award", "name": None, "awards": [award_detail(
+                                   r.ocid, r.award_id, r.buyer_name, r.supplier_name, date_text(r.award_date), r.amount, r.title)]},
+                               metric=f"{r.ratio:.1f}x the median of {n - 1} comparable awards (anomaly score {r.anomaly_score:.2f})",
+                               threshold=f"Isolation Forest outlier and >= {pa['min_ratio_to_median']:g}x the cohort median, cohort >= {pa['min_cohort']} awards",
+                               comparison=comparison, hints=data_entry_hints(float(r.amount), float(r.ratio))))
     if not out:
         warnings.append("No award is both a model outlier and above the ratio threshold in this scope.")
     summary = (f"{len(out)} anomalous award(s) across {len(cohorts)} cohort(s)" if out else

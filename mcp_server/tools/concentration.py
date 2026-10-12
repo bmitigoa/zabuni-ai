@@ -92,7 +92,10 @@ def supplier_concentration(buyer: BuyerArg = None, years: YearsArg = None,
             "supplier_concentration",
             f"{name}: top supplier {top['supplier']} holds {top_c:.0%} of {c['n_awards']} named awards by count and "
             f"{top_v:.0%} by value",
-            severity_hint(max(top_c, top_v), float(sc["flag_share"])), cites)
+            severity_hint(max(top_c, top_v), float(sc["flag_share"])), cites,
+            subject={"kind": "buyer", "name": name, "awards": []},
+            metric=f"top supplier {top['supplier']}: {top_c:.0%} of awards by count, {top_v:.0%} by value",
+            threshold=f"top supplier share >= {sc['flag_share']:.0%} by count or value among >= {sc['min_awards']} supplier-named awards")
 
     per_supplier = int(ev_cfg["supplier_awards"])
     if b:

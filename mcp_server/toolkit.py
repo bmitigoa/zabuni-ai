@@ -79,11 +79,50 @@ def severity_hint(metric: float | None, threshold: float) -> str:
     return "high" if metric >= threshold * float(rules()["flags"]["high_multiple"]) else "medium"
 
 
-def make_flag(rule: str, summary: str, severity: str, evidence: list[dict[str, Any]]) -> dict[str, Any]:
+def award_detail(ocid: str, award_id: str | None, buyer: Any, supplier: Any, date: Any, amount: Any, title: Any) -> dict[str, Any]:
+    """The facts a reviewer needs about one flagged award (what, who, when, how much); amounts are raw KES numbers."""
+    return {"ocid": ocid, "award_id": award_id, "buyer": (buyer or "").strip() or None, "supplier": supplier or None,
+            "date": date if isinstance(date, str) or date is None else date_text(date), "amount_kes": None if amount is None else float(amount),
+            "title": (title or "").strip() or None}
+
+
+def validation_label(rule: str) -> str:
+    """'provisional' unless a practitioner has validated this rule's thresholds (rules validation.validated_rules)."""
+    v = rules()["validation"]
+    return "validated" if rule in v["validated_rules"] else v["label"]
+
+
+def threshold_text(rule: str, text: str) -> str:
+    """A threshold sentence with its validation status attached, e.g. 'ratio >= 3x the median (provisional)'."""
+    return f"{text} ({validation_label(rule)})"
+
+
+def data_entry_hints(amount: float | None, ratio_to_median: float | None) -> list[str]:
+    """Rule-based hint that an amount may be a data-entry error: extreme multiple of its comparison median, a large round
+    number, or a run of nines. Thresholds are in rules data_quality (provisional)."""
+    dq = rules()["data_quality"]
+    if amount is None:
+        return []
+    digits = str(int(amount))
+    extreme = ratio_to_median is not None and ratio_to_median >= float(dq["suspect_ratio_to_median"])
+    round_number = amount >= float(dq["round_number_min_amount_kes"]) and amount % float(dq["round_number_modulus_kes"]) == 0
+    nines = digits.endswith("9" * int(dq["nines_run_min_digits"]))
+    return [dq["hint"]] if (extreme or round_number or nines) else []
+
+
+def make_flag(rule: str, summary: str, severity: str, evidence: list[dict[str, Any]], *, subject: dict[str, Any] | None = None,
+              metric: str | None = None, threshold: str | None = None, comparison: dict[str, Any] | None = None,
+              hints: list[str] | None = None) -> dict[str, Any]:
     """A tool-proposed flag. The agent needs no knowledge of each tool's result shape: it reads `result.flags`.
 
-    A flag without evidence is never made (hard rule: unsourced flags are disqualifying)."""
+    `detail` is the structured, tool-made description the review screens draw: the flagged subject (awards, or a buyer),
+    the signal (metric, threshold with its validation status, comparison set) and data-entry hints. A flag without evidence is
+    never made (hard rule: unsourced flags are disqualifying)."""
     if not evidence:
         raise ValueError("a flag needs evidence")
+    signal = {"rule": rule, "summary": summary, "severity": severity, "metric": metric,
+              "threshold": threshold_text(rule, threshold) if threshold else None, "comparison": comparison,
+              "caveat": rules()["flag_caveats"].get(rule)}
+    detail = {"subject": subject or {"kind": "awards", "name": None, "awards": []}, "signals": [signal], "hints": list(hints or [])}
     return {"rule": rule, "summary": summary, "severity_hint": severity,
-            "ocids": sorted({e["ocid"] for e in evidence}), "evidence": evidence}
+            "ocids": sorted({e["ocid"] for e in evidence}), "evidence": evidence, "detail": detail}

@@ -312,6 +312,16 @@ async def synthesiser(state: AgentState, ctx: AgentContext) -> dict[str, Any]:
                         draft_rule=d["draft"].get("rule"), draft_explanation=d["draft"].get("explanation", "")[:200])
     created: list[dict[str, Any]] = []
     suppressed: list[dict[str, Any]] = []
+    accepted, absorbed = policy.merge_same_award(accepted, fl["severities"], ctx.rules["signal_notes"]["different_sets"])
+    if absorbed:
+        ctx.audit.event("flags_merged", absorbed=absorbed)
+        notes.append(f"{absorbed} finding(s) about an award that another check had already flagged were merged into one card.")
+    accepted, out_of_scope = policy.drop_out_of_scope(accepted, state.get("scope") or {})
+    for item in out_of_scope:
+        ctx.audit.event("out_of_scope_dropped", rule=item["finding"]["rule"], ocid=item["finding"]["ocid"], problems=item["problems"][:3])
+    if out_of_scope:
+        notes.append(f"{len(out_of_scope)} finding(s) were not raised because the flagged award lies outside the requested scope "
+                     f"({out_of_scope[0]['problems'][0]}).")
     accepted, capped = policy.cap_findings(accepted, fl["severities"], int(ctx.cfg["max_flags_per_run"]))
     if capped:
         ctx.audit.event("flags_capped", kept=len(accepted), capped=len(capped), limit=ctx.cfg["max_flags_per_run"])
@@ -324,6 +334,8 @@ async def synthesiser(state: AgentState, ctx: AgentContext) -> dict[str, Any]:
             break
         args = {"ocid": f["ocid"], "rule": f["rule"], "severity": f["severity"], "explanation": f["explanation"],
                 "evidence": f["evidence"], "run_id": ctx.audit.run_id}
+        if f.get("detail"):
+            args["detail"] = f["detail"]
         try:
             out = await ctx.backend.call(writer.server, writer.name, args, step={"reason": "persist accepted finding"})
             ctx.calls += 1
@@ -353,7 +365,7 @@ def _flag_view(flag: dict[str, Any], shown: int) -> dict[str, Any]:
     """What the reviewer sees for one flag (compact: the first evidence items plus a count)."""
     return {"flag_id": flag["flag_id"], "rule": flag["rule"], "severity": flag["severity"], "explanation": flag["explanation"],
             "ocids": flag["ocids"], "n_evidence": len(flag["evidence"]), "evidence": flag["evidence"][:shown],
-            "clarifications": flag.get("clarifications", [])}
+            "clarifications": flag.get("clarifications", []), "detail": flag.get("detail")}
 
 
 async def _refresh_statuses(ctx: AgentContext, flags: list[dict[str, Any]]) -> list[dict[str, Any]]:

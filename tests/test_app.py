@@ -200,3 +200,20 @@ def test_a_failed_preparation_shows_the_error_and_no_form(monkeypatch, at):
     page.run()
     assert not page.exception and any("No HF_TOKEN" in e.value for e in page.error)
     assert not [b for b in page.button if b.label == "Run investigation"]
+
+
+# ----------------------------------------------------------------------------- the example queries must work on the frozen snapshot
+def test_every_example_query_returns_awards_and_at_least_one_flag_on_the_frozen_snapshot():
+    from app.examples import EXAMPLES
+    from mcp_server import tools
+    assert len(EXAMPLES) == 3
+    for ex in EXAMPLES:
+        years = ex["years"] or None
+        found = tools.search_awards(buyer=ex["buyer"] or None, supplier=ex["supplier"] or None,
+                                    date_from=f"{min(years)}-01-01" if years else None, date_to=f"{max(years)}-12-31" if years else None, limit=5)
+        assert found["result"]["total_matches"] > 0, ex["label"]
+        kwargs = {"buyer": ex["buyer"] or None, "supplier": ex["supplier"] or None, "years": years, "limit": 5}
+        if ex["check"] == "detect_noncompetitive_method":
+            kwargs.pop("supplier")
+        out = getattr(tools, ex["check"])(**kwargs)
+        assert out["result"]["flags"], f"{ex['label']}: {ex['check']} returned no flag"
