@@ -1,0 +1,168 @@
+{
+ "provider": "groq",
+ "model": "qwen/qwen3.8-27b",
+ "runs": [
+  {
+   "query": "Q1",
+   "run_id": "run_20261012_133820_e274",
+   "ok": true,
+   "plan_tools": [
+    "search_awards",
+    "detect_splitting",
+    "detect_price_anomalies",
+    "supplier_concentration",
+    "detect_noncompetitive_method"
+   ],
+   "tool_calls": 16,
+   "n_flags": 4,
+   "flagged": [
+    "ocds-5whusi-043/2022/2023|20250205150331-52488",
+    "ocds-5whusi-1110244-2-2022/2023|20250205150258-53204",
+    "ocds-5whusi-1368844-2023/2024|20240704182603-91413",
+    "ocds-5whusi-307A(1)/2022/2023|20250205150331-52493",
+    "ocds-5whusi-42686|20250205150132-43031",
+    "ocds-5whusi-GMC/GVN/Q/022/2022/2023|20250205150330-52114"
+   ],
+   "severities": {
+    "high": 3,
+    "medium": 1,
+    "low": 0
+   },
+   "tokens": 4256,
+   "prompt_tokens": 2940,
+   "completion_tokens": 1316,
+   "cost_usd": 0.003895,
+   "seconds": 89.5,
+   "llm_calls": 2,
+   "fallbacks": 1,
+   "models": [
+    "groq:openai/gpt-oss-120b",
+    "groq:qwen/qwen3.8-27b"
+   ],
+   "scope_request": false,
+   "capped": 0,
+   "merged_notes": [
+    "1 finding(s) about an award that another check had already flagged were merged into one card."
+   ]
+  },
+  {
+   "query": "Q2",
+   "run_id": "run_20261012_133950_61b1",
+   "ok": true,
+   "plan_tools": [
+    "search_awards",
+    "detect_noncompetitive_method",
+    "supplier_concentration",
+    "detect_splitting",
+    "detect_price_anomalies"
+   ],
+   "tool_calls": 14,
+   "n_flags": 3,
+   "flagged": [
+    "buyer:Kenya Rural Roads Authority|detect_noncompetitive_method",
+    "ocds-5whusi-KeRRA/08/39/NYR/NYERITOWN/GOK/AIE22058/2-31-22|23-165|20240528103637-84893",
+    "ocds-5whusi-KeRRA/08/GSA/39/032/2023-24.|20240402143803-78796"
+   ],
+   "severities": {
+    "high": 0,
+    "medium": 3,
+    "low": 0
+   },
+   "tokens": 4171,
+   "prompt_tokens": 3154,
+   "completion_tokens": 1017,
+   "cost_usd": 0.006591,
+   "seconds": 32.2,
+   "llm_calls": 2,
+   "fallbacks": 0,
+   "models": [
+    "groq:qwen/qwen3.8-27b"
+   ],
+   "scope_request": false,
+   "capped": 0,
+   "merged_notes": []
+  }
+ ],
+ "summary": {
+  "Q1": {
+   "runs": 1,
+   "failed": 0,
+   "plan_identical_share": 1.0,
+   "distinct_plans": 1,
+   "modal_plan": [
+    "detect_noncompetitive_method",
+    "detect_price_anomalies",
+    "detect_splitting",
+    "search_awards",
+    "supplier_concentration"
+   ],
+   "flagged_overlap_jaccard_mean": null,
+   "flags": [
+    4,
+    4,
+    4
+   ],
+   "tokens": [
+    4256,
+    4256,
+    4256
+   ],
+   "seconds": [
+    89.5,
+    89.5,
+    89.5
+   ],
+   "cost_usd": [
+    0.003895,
+    0.003895,
+    0.003895
+   ],
+   "tool_calls": [
+    16,
+    16,
+    16
+   ],
+   "fallbacks": 1
+  },
+  "Q2": {
+   "runs": 1,
+   "failed": 0,
+   "plan_identical_share": 1.0,
+   "distinct_plans": 1,
+   "modal_plan": [
+    "detect_noncompetitive_method",
+    "detect_price_anomalies",
+    "detect_splitting",
+    "search_awards",
+    "supplier_concentration"
+   ],
+   "flagged_overlap_jaccard_mean": null,
+   "flags": [
+    3,
+    3,
+    3
+   ],
+   "tokens": [
+    4171,
+    4171,
+    4171
+   ],
+   "seconds": [
+    32.2,
+    32.2,
+    32.2
+   ],
+   "cost_usd": [
+    0.006591,
+    0.006591,
+    0.006591
+   ],
+   "tool_calls": [
+    14,
+    14,
+    14
+   ],
+   "fallbacks": 0
+  }
+ }
+}

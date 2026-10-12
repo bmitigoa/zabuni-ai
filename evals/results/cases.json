@@ -1,0 +1,194 @@
+{
+ "run_at": "2026-10-12 16:15:51",
+ "results": [
+  {
+   "id": "D1",
+   "category": "detection",
+   "title": "Splitting: positive",
+   "expectation": "Makueni County Government 2022-2023 raises the 3-award cluster to DOUBLE KEY SYSTEMS (each just under KES 5M, 13 days)",
+   "status": "PASS",
+   "observed": "3 awards from Makueni County Government to DOUBLE KEY SYSTEMS LTD within 13 days, each just below KES 5,000,00",
+   "seconds": 0.3
+  },
+  {
+   "id": "D2",
+   "category": "detection",
+   "title": "Splitting: negative",
+   "expectation": "Makueni County Government 2019 raises nothing",
+   "status": "PASS",
+   "observed": "0 flags",
+   "seconds": 0.3
+  },
+  {
+   "id": "D3",
+   "category": "detection",
+   "title": "Price benchmark: positive",
+   "expectation": "the steel-drums award (KES 8.9M) is flagged with >= 10 comparables",
+   "status": "PASS",
+   "observed": "22.53x the median of 10 comparables",
+   "seconds": 0.7
+  },
+  {
+   "id": "D4",
+   "category": "detection",
+   "title": "Price benchmark: negative",
+   "expectation": "an award at 0.43x its comparables' median is not flagged",
+   "status": "PASS",
+   "observed": "0.43x the median of 18 comparables, flagged=False",
+   "seconds": 0.6
+  },
+  {
+   "id": "D5",
+   "category": "detection",
+   "title": "Price anomaly (Isolation Forest): positive",
+   "expectation": "Makueni County Government 2022-2023: the staff-medical-cover award is flagged as an outlier",
+   "status": "PASS",
+   "observed": "71.0x the median of 4659 comparable awards (anomaly score 0.75)",
+   "seconds": 5.2
+  },
+  {
+   "id": "D6",
+   "category": "detection",
+   "title": "Price anomaly: negative",
+   "expectation": "Makueni County Government 2019 raises nothing (cohorts too small to model)",
+   "status": "PASS",
+   "observed": "5 cohort(s) had fewer than 30 awards and were not analysed.",
+   "seconds": 2.6
+  },
+  {
+   "id": "D7",
+   "category": "detection",
+   "title": "Non-competitive method: positive",
+   "expectation": "Kenya Power & Lighting Company 2023: direct+restricted share >= 2x the national baseline",
+   "status": "PASS",
+   "observed": "7.64x the baseline, 77 awards",
+   "seconds": 0.3
+  },
+  {
+   "id": "D8",
+   "category": "detection",
+   "title": "Non-competitive method: negative",
+   "expectation": "Makueni County Government 2023 (0.11x the baseline) is not flagged",
+   "status": "PASS",
+   "observed": "0.11x the baseline",
+   "seconds": 0.3
+  },
+  {
+   "id": "D9",
+   "category": "detection",
+   "title": "Supplier concentration: positive",
+   "expectation": "the national ranking raises at least one buyer whose top supplier holds >= 25 %",
+   "status": "PASS",
+   "observed": "Kenya Industrial Research & Development Institute: top supplier Kingsley Construction Co. Ltd holds 8% of 38 named award",
+   "seconds": 3.9
+  },
+  {
+   "id": "D10",
+   "category": "detection",
+   "title": "Supplier concentration: negative",
+   "expectation": "Makueni County Government 2023 (top supplier 0.17 % of awards) is not flagged",
+   "status": "PASS",
+   "observed": "top supplier share by count 0.17%",
+   "seconds": 0.3
+  },
+  {
+   "id": "A1",
+   "category": "agent",
+   "title": "Citation guard",
+   "expectation": "a model that cites an invented ocid, in a finding or in the summary, cannot get it into a stored flag",
+   "status": "PASS",
+   "observed": "2 drafts dropped, 0 invented ocids stored, 4 tool-proposed flags kept",
+   "seconds": 7.7
+  },
+  {
+   "id": "A2",
+   "category": "agent",
+   "title": "Scope guard",
+   "expectation": "a request with no buyer, supplier or period runs no tool, even if the model invents a scope",
+   "status": "PASS",
+   "observed": "scope requested, 0 tool calls, 1 LLM call",
+   "seconds": 4.5
+  },
+  {
+   "id": "A3",
+   "category": "agent",
+   "title": "Budget stop",
+   "expectation": "when the token budget is spent the run stops cleanly and the memo says so",
+   "status": "PASS",
+   "observed": "stopped before any tool call; memo states the stop",
+   "seconds": 4.8
+  },
+  {
+   "id": "A4",
+   "category": "agent",
+   "title": "Rejected-flag memory",
+   "expectation": "a flag a reviewer rejected is not raised again in a later run on the same scope",
+   "status": "PASS",
+   "observed": "4 flags in run 1, 3 in run 2; the rejected one was suppressed",
+   "seconds": 11.3
+  },
+  {
+   "id": "A5",
+   "category": "agent",
+   "title": "Clarify loop",
+   "expectation": "a reviewer's question re-investigates that flag, attaches an answer and pauses again before the memo",
+   "status": "PASS",
+   "observed": "paused again with the agent's answer attached, then drafted the memo after approval",
+   "seconds": 6.6
+  },
+  {
+   "id": "A6",
+   "category": "agent",
+   "title": "Duplicate-flag merge",
+   "expectation": "a price benchmark and a price anomaly on the SAME award become one card with two signals",
+   "status": "PASS",
+   "observed": "1 card, 2 signals",
+   "seconds": 11.5
+  },
+  {
+   "id": "A7",
+   "category": "agent",
+   "title": "Scope check on flagged awards",
+   "expectation": "a flagged award dated outside the requested years is not raised",
+   "status": "PASS",
+   "observed": "1 finding(s) were not raised because the flagged award lies outside the requested scope (award ocds-5whusi-42686: dated 2022-12-14, outside ",
+   "seconds": 5.6
+  },
+  {
+   "id": "A8",
+   "category": "agent",
+   "title": "Flag cap",
+   "expectation": "at most max_flags_per_run flags are raised, strongest first, and the memo says so",
+   "status": "PASS",
+   "observed": "2 flags raised, 2 capped",
+   "seconds": 5.6
+  },
+  {
+   "id": "F1",
+   "category": "false alarm",
+   "title": "Road-section lots (KRRA)",
+   "expectation": "routine-maintenance contracts for DIFFERENT road sections awarded to one contractor are lots of a programme, not splitting",
+   "status": "FAIL",
+   "observed": "FLAGGED (false alarm): 3 awards with different road names ['Ndonyo Uasin - Sereolipi C605', 'DB West - Opiroi C606', 'Routine maintenance Lgoss - Jn Longeiwan C609']; card caveat: 'Several awards to one supplier can be separate lots, section...'",
+   "seconds": 0.3
+  },
+  {
+   "id": "F2",
+   "category": "false alarm",
+   "title": "Repeat supply under a framework (KPLC)",
+   "expectation": "repeat supply of tools and equipment to one supplier may be call-offs under a framework agreement",
+   "status": "FAIL",
+   "observed": "FLAGGED (false-alarm risk): 4 awards from Kenya Power & Lighting Company to Pureplus Solutions Limited within 15 days, each just below KES; the tool cannot see a framework agreement",
+   "seconds": 0.2
+  },
+  {
+   "id": "F3",
+   "category": "false alarm",
+   "title": "Direct procurement by a single-source buyer (Kenya Airport Authority)",
+   "expectation": "a high direct-procurement share can be lawful (emergency, single source)",
+   "status": "FAIL",
+   "observed": "FLAGGED (4.68x the baseline); caveat on the flag: True",
+   "seconds": 0.4
+  }
+ ]
+}

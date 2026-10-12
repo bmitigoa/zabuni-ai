@@ -2,16 +2,24 @@
 
 Agentic AI (MCP + LangGraph) that flags value-for-money and integrity risks in public procurement using OCDS data. Human reviewers decide. Governance track, African Agentic AI Design Challenge.
 
-> **Status:** work in progress (build window 8–14 Oct 2026). Sections below are outlined and will be filled in as each part is built.
+> Governance track ("The Bid Box Challenge"), African Agentic AI Design Challenge. **Live demo:** <https://zabuni-ai.streamlit.app> · **Demo video:** _link added on submission day_ · [Architecture](ARCHITECTURE.md) · [Evals](EVALS.md)
 
 ## 1. Problem statement
-_TBD_
+Kenya publishes its public-procurement awards as open data (Open Contracting Data Standard, via the PPRA), but the people who must act on that data have little time to read it. A county or national **procurement unit** has to evaluate and approve awards; **internal audit** has to look for value-for-money and integrity risks after the fact. Both face thousands of awards, no bidder lists, no bid documents and no item-level prices, and the usual red flags (one supplier repeatedly just under an approval threshold, an award many times its peers' price, a buyer that rarely competes) are found by hand in spreadsheets, if at all.
+
+The risk is twofold: real problems go unseen, and a tool that simply *scores* suppliers would be unfair (a flag is not a finding) and unaccountable (nobody can say why it flagged). The challenge is an assistant that finds the leads, shows exactly which published record each one rests on, and leaves every decision to a named role.
 
 ## 2. Solution overview
-_TBD_
+**Zabuni AI** ("zabuni" = Swahili for *tender*) is an agentic decision-support tool for the **Value for money** theme of the Governance track. A reviewer names a buyer, a supplier or years. A LangGraph agent (Planner, Investigator, Synthesiser) running an open-weights model plans its own investigation, calls tools **only through MCP** (a custom `zabuni-mcp` server plus the official Filesystem MCP server), and raises flags for: contract splitting, price outliers (a transparent benchmark plus an Isolation Forest check), non-competitive procurement, and supplier concentration. **Every flag cites the OCDS records behind it** and shows the flagged award apart from the set of awards it was compared with.
+
+A **human reviewer approves, rejects or asks a question on each flag, with a reason and a role**, before anything enters the evaluation memo; a rejected flag is remembered. The agent **never recommends or awards a tender**: the committee decides. Guards keep the model honest (scope grounding, citation guard, scope check on flagged awards, run budget), and every tool call is logged. Live demo: <https://zabuni-ai.streamlit.app>.
 
 ## 3. Target users
-_TBD_
+* **County and national procurement units** (heads of procurement, procurement officers, evaluation committee secretariats): a first-pass review of a buyer's recent awards before approval or before the committee sits, and a sourced list of leads to ask about.
+* **Internal audit units** of counties, ministries and state agencies: a repeatable way to select awards for audit testing, with the cited records and the reasoning in a memo.
+* Secondary: oversight bodies and county-assembly committees reading published data, and civil-society analysts (company-level data only, no personal data).
+
+They use it to *prepare questions*, not to reach conclusions: every flag is labelled a screening indicator, every threshold *provisional* until a practitioner validates it ([`docs/user_engagement.md`](docs/user_engagement.md)).
 
 ## 4. Architecture
 ![Zabuni AI system architecture](docs/architecture.png)
@@ -19,22 +27,23 @@ _TBD_
 Vector version: [`docs/architecture.pdf`](docs/architecture.pdf); one-page explanation: [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## 5. Setup / installation
-_One-command setup is still TBD (Day 6)._ Requirements: Python 3.12, Node.js with `npx` (for the Filesystem MCP server), the frozen snapshot, and a Groq API key (or Ollama). On Windows (on macOS/Linux use `.venv312/bin/` and `python3.12`):
+**One command from a clean clone** (Python 3.11+ and Node.js 20+ installed; on Windows use `py -3.12` if `python` is not 3.12):
+```bash
+git clone https://github.com/bmitigoa/zabuni-ai.git && cd zabuni-ai
+python scripts/setup.py --snapshot PATH/TO/full.jsonl.gz
+```
+`scripts/setup.py` creates `.venv312`, installs `requirements.txt`, copies the **frozen OCDS snapshot** to `data/raw/full.jsonl.gz` and **verifies its SHA-256** against `data/snapshot.sha256`, builds `data/zabuni.duckdb` (about 20 s), creates `.env` (local model: Ollama), checks Node.js and Ollama, and runs the tests (skip with `--skip-tests`).
 
+**The snapshot is not in this repository** (it is open data from the PPRA, published through the Open Contracting Data Registry, publication 147, <https://data.open-contracting.org/en/publication/147>; the project froze the file downloaded on 8 Oct 2026, and the setup refuses a different file unless you add `--allow-different-snapshot`, in which case the numbers in `EVALS.md` will not reproduce). With a Hugging Face token for the private copy the project owner holds, `HF_TOKEN=... python scripts/setup.py` fetches it instead.
+
+Then, for the local model: `ollama pull qwen2.5:7b` (free, no quota, slow on a laptop CPU), or put a `GROQ_API_KEY` in `.env` and set `LLM_PROVIDER=groq`, `MODEL=qwen/qwen3.8-27b`. Manual equivalent of the script:
 ```bash
 py -3.12 -m venv .venv312
-.venv312/Scripts/pip install -r requirements.txt
-# place the frozen snapshot at data/raw/full.jsonl.gz, then:
-.venv312/Scripts/python data/loader.py          # builds data/zabuni.duckdb (about 10 s)
-cp .env.example .env                            # then put your GROQ_API_KEY in .env
-.venv312/Scripts/python -m agent.models         # lists the models YOUR key can use (a documented model may be unavailable)
-.venv312/Scripts/python -m streamlit run app/streamlit_app.py     # the web app (see Usage)
-.venv312/Scripts/python -m pytest               # 266 tests; one live LLM smoke test needs a Groq key and skips (not fails) on a provider limit (set ZABUNI_SKIP_LIVE=1 to skip it)
+.venv312/Scripts/pip install -r requirements.txt            # macOS/Linux: .venv312/bin/pip
+.venv312/Scripts/python data/loader.py                       # builds data/zabuni.duckdb from data/raw/full.jsonl.gz
+cp .env.example .env
+.venv312/Scripts/python -m pytest -q                         # the live-LLM smoke test skips without a Groq key (ZABUNI_SKIP_LIVE=1 skips it)
 ```
-
-**Python version.** Deployment is pinned to **Python 3.12** (`runtime.txt`, read by Heroku/Render-style builds); the full
-suite passes on 3.12.10. Hugging Face Spaces selects Python through `python_version` in the Space's README header; that
-will be set and verified on Day 5. A clean-clone install is still to be tested on Day 6.
 
 **Hosted deployment (Streamlit Community Cloud, free).** The app deploys straight from this public repository: entry point `app/streamlit_app.py`, Python 3.12,
 `requirements.txt`, and `packages.txt` (`nodejs`, `npm`) for the official Filesystem MCP server. The server's dependency `minimatch` 10 wants Node 20 or newer, so
@@ -118,10 +127,16 @@ classifiers, which cannot chat, and no Gemma, Mistral or Aya model is listed. Th
 `gpt-oss` family, so `gpt-oss-120b` stays as the fallback and is documented as such. Locally the model is `qwen2.5:7b` (Qwen family).
 
 ## 7. Technology stack
-Python 3.12; **DuckDB** (embedded analytics database) and pandas/numpy; **FastMCP** (MCP Python SDK) for the custom server and
-**langchain-mcp-adapters** (`MultiServerMCPClient`) for the client; the official **Filesystem MCP server** (Node/npx);
-**LangGraph** (`StateGraph`) for the agent; **pydantic** for the LLM's structured outputs and **jsonschema** to validate tool
-arguments; **langchain-groq** / **langchain-ollama** for open-weights models; pytest; scikit-learn and Streamlit (Day 4-5).
+| Layer | Choice |
+|---|---|
+| Language / tests | Python 3.12, pytest |
+| Agent orchestration | **LangGraph** (`StateGraph`, conditional edges, `interrupt`, SQLite checkpointer) |
+| LLM (open weights only) | **Qwen 3.8 27B** on Groq (hosted demo), **gpt-oss-120b** on Groq (fallback; see Limitations), **Qwen 2.5 7B** on Ollama (local development and evals); `langchain-groq`, `langchain-ollama`, pydantic structured output |
+| MCP | **FastMCP** (MCP Python SDK) custom server `zabuni-mcp`; **langchain-mcp-adapters** client; the official **Filesystem MCP server** (Node, `npx`) |
+| Data | **DuckDB** (read-only OCDS analysis store; separate writable flag store), pandas, numpy; PPRA Kenya OCDS snapshot |
+| ML | scikit-learn **Isolation Forest** (fixed seed) |
+| UI / hosting | **Streamlit**, Streamlit Community Cloud; ReportLab for the memo PDF; alternative Docker kit for Hugging Face Spaces |
+| Quality | schema validation of every tool call (`jsonschema`), an AST test for magic numbers and tool names, a doc-vs-rules test |
 
 ## 8. Agent architecture
 ```
@@ -270,6 +285,11 @@ MCP boundary and is audit-logged like any other call, and we avoid hand-rolling 
 The agent never recommends or awards a tender; the human decision is the only thing that moves a flag into the memo.
 
 ## 12. Limitations
+* **Thresholds are provisional.** Every threshold in `mcp_server/rules.py` (3x the median, 3 awards in 30 days, 25 % share, ...) is a reasoned starting point from the OCP red-flag guidance, **not validated by a practitioner**; each flag card says "provisional". A flag is a prompt to ask a question, never a finding.
+* **No bid documents.** They are not published, so bid content, evaluation scoring and bidder qualifications cannot be assessed; the data also has no tenderers, no item-level detail and no tender estimates, so a price comparison uses title words, category and buyer type only and can compare unlike goods.
+* **Data quality.** Some amounts are obvious data-entry errors (a rule-based hint says "verify with the source document"), supplier names are missing on about a quarter of awards, organisations are matched on normalised names, dates are contract-signing dates.
+* **False alarms are expected.** Lots of one tender, framework call-offs and emergency or single-source procurement can all look like splitting or non-competitive procurement; the cards state the lawful explanations to rule out, and `EVALS.md` shows three such cases the tools raise (a documented FAIL).
+* **Fallback model outside the challenge's named families.** The Groq key used here can call only one chat model from Qwen, Llama, Gemma, Mistral or Aya (the primary, Qwen 3.8 27B); the only other open-weights chat model it offers is `gpt-oss-120b` (OpenAI), kept as the fallback and used only when Qwen is out of quota or cannot produce usable output.
 * **Free-tier quota.** The hosted demo runs on Groq's free tier: about 200,000 tokens per day for the main model, shared by every
   visitor and by the builder's own testing. A run uses roughly 8-10 thousand tokens, so on a busy day the live demo will refuse new runs
   ("daily quota reached") until the rolling 24-hour window frees up; the recorded demo video shows a complete run. The remaining-quota
@@ -290,16 +310,21 @@ The agent never recommends or awards a tender; the human decision is the only th
 See also "Data source & limitations" below.
 
 ## 13. Future improvements
-_TBD_
+1. **Practitioner validation of every threshold** (a session with a procurement officer and an internal auditor, recorded in `docs/user_engagement.md`); until then all thresholds are provisional and labelled so.
+2. **Better false-alarm handling:** recognise lots of one tender and framework call-offs (the evals show the current rules flag them), and use `procurementMethodDetails` to separate emergency from single-source direct procurement.
+3. **Two-level approval** for high-severity flags (designed and verified as a practice change in the local playbook; not in the product).
+4. **Bid documents, tenderers and item-level data** if the PPRA publishes them, which would allow single-bidder checks and like-for-like price comparison.
+5. **Multi-user deployment:** authentication, persistent storage of flags and decisions, and role-based review queues (today a visitor has a private, temporary store).
+6. **Exports and languages:** CSV/JSON export of approved findings and a Swahili summary of the memo (both prototyped as verified playbook changes; Swahili language quality is unverified).
+7. **Evaluation against practitioner-labelled cases** and a larger sample of model runs (the variance study here is two requests).
 
 ---
 
-## Data source & limitations
-- **Source:** Public Procurement Regulatory Authority (PPRA) Kenya, published as Open Contracting Data Standard (OCDS) data via the Open Contracting Data Registry, publication 147 — <https://data.open-contracting.org/en/publication/147>. Frozen snapshot downloaded 8 Oct 2026 and never refreshed during the build. The raw file is not redistributed in this repo.
-- **Method attribution:** the red-flag approach follows the Open Contracting Partnership's *Red Flags for Integrity* and Kenya's Public Procurement and Asset Disposal Act, 2015 (see [`docs/red_flags.md`](docs/red_flags.md)).
-- **Bid documents are not published**, so the tool cannot assess bid content, evaluation scoring or bidder qualifications.
-- **Gaps in this snapshot** (measured; see [`docs/data_profile.txt`](docs/data_profile.txt)): no tenderers or bidder counts; no tender-level value; no item-level data; no award decision date (contract signing date used instead); no description or status; tender-period dates unreliable (end before start in 44 %); supplier name missing on ~27 % of awards; extreme or non-positive amounts present. Organisations are matched on normalised names, not IDs.
-- Only organisation-level names are used; no personal data is loaded.
+## Data source & attribution
+- **Data:** Public Procurement Regulatory Authority (PPRA) Kenya, published as Open Contracting Data Standard (OCDS) data through the **Open Contracting Data Registry**, publication 147: <https://data.open-contracting.org/en/publication/147>. Frozen snapshot downloaded 8 Oct 2026 and never refreshed during the build; the raw file is not redistributed in this repository (a private copy is kept so the hosted demo can build its database, verified by SHA-256).
+- **Method:** the red-flag approach follows the Open Contracting Partnership's *Red Flags for Integrity* methodology and Kenya's Public Procurement and Asset Disposal Act, 2015 (rules, thresholds and sources in [`docs/red_flags.md`](docs/red_flags.md)); the Isolation Forest is Liu, Ting and Zhou (2008) as implemented in scikit-learn.
+- **Software:** LangGraph, LangChain (`langchain-groq`, `langchain-ollama`, `langchain-mcp-adapters`), the MCP Python SDK (FastMCP), the **official Filesystem MCP server** (`@modelcontextprotocol/server-filesystem`, Model Context Protocol project), DuckDB, pandas, scikit-learn, Streamlit, ReportLab, Hugging Face Hub client. Models: Qwen (Alibaba Cloud), gpt-oss (OpenAI, open weights), served by Groq and Ollama. No code was copied from other projects.
+- **Limits of the data** (measured; see [`docs/data_profile.txt`](docs/data_profile.txt)): no tenderers or bidder counts; no tender-level value; no item-level data; no award decision date (contract signing date used instead); tender-period dates unreliable; supplier names missing on about a quarter of awards; extreme or non-positive amounts present (a few are probably data-entry errors, and the cards say so). Organisations are matched on normalised names, not IDs. Only organisation-level names are used; no personal data is loaded.
 - Flags are screening indicators for human review, not findings of wrongdoing.
 
 ## Evals summary
