@@ -2,7 +2,7 @@
 
 Agentic AI (MCP + LangGraph) that flags value-for-money and integrity risks in public procurement using OCDS data. Human reviewers decide. Governance track, African Agentic AI Design Challenge.
 
-> Governance track ("The Bid Box Challenge"), African Agentic AI Design Challenge. **Live demo:** <https://zabuni-ai.streamlit.app> · **Demo video:** <https://youtu.be/SBpfwkF59YQ> · [Architecture](ARCHITECTURE.md) · [Evals](EVALS.md)
+> Governance track ("The Bid Box Challenge"), African Agentic AI Design Challenge. **Live demo:** <https://zabuni-ai.streamlit.app> · **Demo video:** <https://youtu.be/FgkZpriEwU8> · [Architecture](ARCHITECTURE.md) · [Evals](EVALS.md)
 
 ## 1. Problem statement
 Kenya publishes its public-procurement awards as open data (Open Contracting Data Standard, via the PPRA), but the people who must act on that data have little time to read it. A county or national **procurement unit** has to evaluate and approve awards; **internal audit** has to look for value-for-money and integrity risks after the fact. Both face thousands of awards, no bidder lists, no bid documents and no item-level prices, and the usual red flags (one supplier repeatedly just under an approval threshold, an award many times its peers' price, a buyer that rarely competes) are found by hand in spreadsheets, if at all.
@@ -66,7 +66,7 @@ version 2026.8.31 in `agent/settings.py`), so the first agent run needs network 
 ```bash
 .venv312/Scripts/python -m streamlit run app/streamlit_app.py        # http://localhost:8501
 ```
-**Hosted demo:** <https://zabuni-ai.streamlit.app> (Streamlit Community Cloud, Groq; steps in `deploy/hf/DEPLOY.md`, Part A); recorded demo video: <https://youtu.be/SBpfwkF59YQ>.
+**Hosted demo:** <https://zabuni-ai.streamlit.app> (Streamlit Community Cloud, Groq; steps in `deploy/hf/DEPLOY.md`, Part A); recorded demo video: <https://youtu.be/FgkZpriEwU8>.
 
 1. **Ask.** Fill in a buyer, a supplier and/or years (or click an example) and optionally what to look for. A request with none of the three is
    *not run*: the app and the agent ask for a scope, because every tool would otherwise scan all of Kenya.
@@ -346,7 +346,7 @@ Full results, reproduction commands and every failure: [`EVALS.md`](EVALS.md) (r
 Prices come from the dated list in `rules.py` (`agent.pricing`, retrieved 11 Oct 2026); costs are *estimates*, and the hosted demo's real cost is zero on the free tier.
 
 ## Demo video
-<https://youtu.be/SBpfwkF59YQ> (unlisted, under 3 minutes). Script: [`docs/demo_script.md`](docs/demo_script.md). Submission text: [`docs/submission_description.md`](docs/submission_description.md).
+<https://youtu.be/FgkZpriEwU8> (unlisted, under 3 minutes). Script: [`docs/demo_script.md`](docs/demo_script.md). Submission text: [`docs/submission_description.md`](docs/submission_description.md).
 
 ## License
 MIT — see [LICENSE](LICENSE).
