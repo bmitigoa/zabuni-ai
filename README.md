@@ -2,7 +2,7 @@
 
 Agentic AI (MCP + LangGraph) that flags value-for-money and integrity risks in public procurement using OCDS data. Human reviewers decide. Governance track, African Agentic AI Design Challenge.
 
-> Governance track ("The Bid Box Challenge"), African Agentic AI Design Challenge. **Live demo:** <https://zabuni-ai.streamlit.app> · **Demo video:** _link added on submission day_ · [Architecture](ARCHITECTURE.md) · [Evals](EVALS.md)
+> Governance track ("The Bid Box Challenge"), African Agentic AI Design Challenge. **Live demo:** <https://zabuni-ai.streamlit.app> · **Demo video:** <https://youtu.be/SBpfwkF59YQ> · [Architecture](ARCHITECTURE.md) · [Evals](EVALS.md)
 
 ## 1. Problem statement
 Kenya publishes its public-procurement awards as open data (Open Contracting Data Standard, via the PPRA), but the people who must act on that data have little time to read it. A county or national **procurement unit** has to evaluate and approve awards; **internal audit** has to look for value-for-money and integrity risks after the fact. Both face thousands of awards, no bidder lists, no bid documents and no item-level prices, and the usual red flags (one supplier repeatedly just under an approval threshold, an award many times its peers' price, a buyer that rarely competes) are found by hand in spreadsheets, if at all.
@@ -20,6 +20,8 @@ A **human reviewer approves, rejects or asks a question on each flag, with a rea
 * Secondary: oversight bodies and county-assembly committees reading published data, and civil-society analysts (company-level data only, no personal data).
 
 They use it to *prepare questions*, not to reach conclusions: every flag is labelled a screening indicator, every threshold *provisional* until a practitioner validates it ([`docs/user_engagement.md`](docs/user_engagement.md)).
+
+**Practitioner input.** On 8 October 2026 one practitioner, a managing partner at a Kenyan audit firm (credited by role only), described in an informal conversation how auditors check an award against previous benchmark records and treat a large difference as a reason to investigate. That is the method behind `compute_price_benchmark` and `detect_price_anomalies`, and the reason every card shows its comparison set. It was not a formal user test: no threshold figures were given, the other rules were not discussed and the participant did not use the app.
 
 ## 4. Architecture
 ![Zabuni AI system architecture](docs/architecture.png)
@@ -64,7 +66,7 @@ version 2026.8.31 in `agent/settings.py`), so the first agent run needs network 
 ```bash
 .venv312/Scripts/python -m streamlit run app/streamlit_app.py        # http://localhost:8501
 ```
-**Hosted demo:** <https://zabuni-ai.streamlit.app> (Streamlit Community Cloud, Groq; steps in `deploy/hf/DEPLOY.md`, Part A); recorded demo video: _link on Day 7_.
+**Hosted demo:** <https://zabuni-ai.streamlit.app> (Streamlit Community Cloud, Groq; steps in `deploy/hf/DEPLOY.md`, Part A); recorded demo video: <https://youtu.be/SBpfwkF59YQ>.
 
 1. **Ask.** Fill in a buyer, a supplier and/or years (or click an example) and optionally what to look for. A request with none of the three is
    *not run*: the app and the agent ask for a scope, because every tool would otherwise scan all of Kenya.
@@ -286,6 +288,7 @@ The agent never recommends or awards a tender; the human decision is the only th
 
 ## 12. Limitations
 * **Thresholds are provisional.** Every threshold in `mcp_server/rules.py` (3x the median, 3 awards in 30 days, 25 % share, ...) is a reasoned starting point from the OCP red-flag guidance, **not validated by a practitioner**; each flag card says "provisional". A flag is a prompt to ask a question, never a finding.
+* **Limited practitioner validation.** The only practitioner input so far is one informal conversation (8 October 2026) that supports the benchmark-comparison method; it gave no threshold figures, did not cover splitting, concentration or non-competitive-method rules, and the participant did not use the app. A hands-on session with auditors and procurement officers is still to do ([`docs/user_engagement.md`](docs/user_engagement.md)).
 * **No bid documents.** They are not published, so bid content, evaluation scoring and bidder qualifications cannot be assessed; the data also has no tenderers, no item-level detail and no tender estimates, so a price comparison uses title words, category and buyer type only and can compare unlike goods.
 * **Data quality.** Some amounts are obvious data-entry errors (a rule-based hint says "verify with the source document"), supplier names are missing on about a quarter of awards, organisations are matched on normalised names, dates are contract-signing dates.
 * **False alarms are expected.** Lots of one tender, framework call-offs and emergency or single-source procurement can all look like splitting or non-competitive procurement; the cards state the lawful explanations to rule out, and `EVALS.md` shows three such cases the tools raise (a documented FAIL).
@@ -343,7 +346,7 @@ Full results, reproduction commands and every failure: [`EVALS.md`](EVALS.md) (r
 Prices come from the dated list in `rules.py` (`agent.pricing`, retrieved 11 Oct 2026); costs are *estimates*, and the hosted demo's real cost is zero on the free tier.
 
 ## Demo video
-_Link added on submission day (Day 7)._ Script: [`docs/demo_script.md`](docs/demo_script.md). Submission text: [`docs/submission_description.md`](docs/submission_description.md).
+<https://youtu.be/SBpfwkF59YQ> (unlisted, under 3 minutes). Script: [`docs/demo_script.md`](docs/demo_script.md). Submission text: [`docs/submission_description.md`](docs/submission_description.md).
 
 ## License
 MIT — see [LICENSE](LICENSE).
