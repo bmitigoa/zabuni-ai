@@ -165,6 +165,37 @@ def refine3_section(provider: str, full: dict[str, Any] | None, prog: dict[str, 
     return out
 
 
+def coverage_section(rows: list[tuple[str, dict[str, Any] | None, dict[str, Any] | None]]) -> list[str]:
+    """Section 7: does the index-first Planner keep every essential tool? One planning run per request type, both modes, per provider."""
+    rows = [(n, f, p) for n, f, p in rows if f and p]
+    if not rows:
+        return []
+    out = ["## 7. Refine 4: plan-coverage guard for progressive disclosure", "",
+           "Progressive disclosure shows the Planner less, so it could plan with too few tools. `python -m evals.plan_coverage --provider P --mode full|progressive` runs ONLY the Planner "
+           "(no tool calls) on 8 request types whose essential checks are obvious from the request (a splitting request needs `detect_splitting`; a price-outlier request is satisfied by "
+           "`detect_price_anomalies` or `compute_price_benchmark`; the two combined requests Q1 and Q2 need both of their checks). Coverage = essential checks present in the model's own plan / essential checks "
+           "(the follow-up rules that run during an investigation are not counted). One planning run per request type and mode.", "",
+           "| Provider | Mode | Request types | Essential checks present | Coverage | Distinct tools per plan (mean) | Planning tokens per request (median) |", "|---|---|---|---|---|---|---|"]
+    for name, full, prog in rows:
+        for mode, d in (("full catalogue", full), ("index first", prog)):
+            ok = [c for c in d["cases"] if c.get("ok")]
+            total, present = sum(len(c["essential"]) for c in ok), sum(c["present"] for c in ok)
+            distinct = statistics.mean(len(set(c["planned"])) for c in ok) if ok else 0
+            tok = statistics.median(c["tokens"] for c in ok) if ok else 0
+            out.append(f"| {name} `{d['model']}` | {mode} | {len(ok)} | {present} / {total} | {100 * present / total:.0f}% | {distinct:.1f} | {tok:,.0f} |" if total else f"| {name} | {mode} | 0 | n/a | n/a | n/a | n/a |")
+    for name, full, prog in rows:
+        out += ["", f"{name}: tools in each plan (full catalogue | index first); a check is satisfied when any tool of its group is planned.", "", "| Case | Request type | Essential | Full catalogue | Index first |", "|---|---|---|---|---|"]
+        for cf, cp in zip(full["cases"], prog["cases"]):
+            ess = " + ".join("/".join(g) for g in cf["essential"])
+            show = lambda c: ("**missing**: " if c.get("missing") else "") + ", ".join(dict.fromkeys(c.get("planned", []))) if c.get("ok") else "failed"   # noqa: E731
+            out.append(f"| {cf['id']} | {esc(cf['type'])} | {ess} | {show(cf)} | {show(cp)} |")
+    out += ["", "**Result.** Every essential check was planned in both modes on both providers, so no safety-net rule was added (the rule would have been a `rules.py` entry mapping a request pattern to a required tool, "
+            "added only if coverage dropped). Two cautions: the sample is one planning run per request type, and the metric checks that the right tool is *present*, not that the plan is good. The index-first plans were "
+            "tighter on Ollama (for P2 and P3 the full-catalogue planner added unrelated tools) and, on Groq, used more planning tokens than the full catalogue (about +27% median), the same cost "
+            "pattern as section 6.", ""]
+    return out
+
+
 def main() -> None:
     cases, groq, ollama = load("cases.json"), load("variance_groq.json"), load("variance_ollama.json")
     out = ["# EVALS", "", "Real runs only: every number below was produced by the scripts in `evals/` on the frozen PPRA snapshot (8 Oct 2026) and is stored in `evals/results/`. "
@@ -215,6 +246,8 @@ def main() -> None:
                 "(2 tools instead of 3: it skipped `search_awards`) and on Groq it planned fewer distinct tools than the full-catalogue planner (3 or 4 instead of 5) in 3 of 4 runs, repeating `search_awards` in both Q2 runs, so it can narrow an investigation. "
                 "(5) Samples are small (3 runs per query on Ollama, 2 on Groq); the earlier index-first Ollama runs made with a first step that did not report the scope are kept as "
                 "`variance_ollama_progressive_a.json`, and are not in the table.", ""]
+    out += coverage_section([("Ollama", load("plan_coverage_ollama_full.json"), load("plan_coverage_ollama_progressive.json")),
+                             ("Groq", load("plan_coverage_groq_full.json"), load("plan_coverage_groq_progressive.json"))])
     (ROOT / "EVALS.md").write_text("\n".join(out) + "\n", encoding="utf-8")
     print("EVALS.md written")
 

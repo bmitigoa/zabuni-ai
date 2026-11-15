@@ -142,3 +142,42 @@ Same answer? Mean Jaccard overlap of the flagged-award sets between the two mode
 
 **How to read this.** (1) *Tokens*: on the local 7B model the index-first Planner shows a much smaller prompt per call (-49% mean) and saves 11% of a whole run, even though it adds a call. On Groq's 27B model the index call costs 738 prompt tokens (the provider counts the tool schema it is sent), more than it saves, and a whole run uses +20% tokens, so the shipped default is **per provider: on for Ollama, off for Groq** (`agent.progressive_disclosure`). (2) *Latency*: planning takes longer on the CPU-only local model with two generations (+79%) while whole-run latency is about the same (-8%, within the noise of three runs and of retries in the 'before' runs); Groq latency is dominated by rate-limit waits and malformed-call retries, not by prompt size, so it is not comparable. (3) *Malformed tool calls*: the 'before' Ollama runs had 2 unusable attempts in 16, both a Synthesiser reply that hit the 900-token reply cap (about 2,700 tokens wasted each); none in the 'after' runs. That is **not** an effect of progressive disclosure: the cap was then raised for the Synthesiser on Ollama (`agent.llm_max_tokens_by_kind`), and a later run (`variance_ollama_progressive_cap.json`) had none either, but its reply (788 tokens) was under the old cap too, so this run does not prove the fix; the unit tests do. On Groq, 14 of 20 / 14 of 24 attempts were unusable in both modes: Qwen 3.8 27B's malformed structured replies (already noted in section 4), unchanged by this work. (4) *Quality*: the flagged awards are the same (overlap 0.97 on Ollama, 1.00 on Groq), but the index-first planner chooses fewer tools on Ollama Q2 (2 tools instead of 3: it skipped `search_awards`) and on Groq it planned fewer distinct tools than the full-catalogue planner (3 or 4 instead of 5) in 3 of 4 runs, repeating `search_awards` in both Q2 runs, so it can narrow an investigation. (5) Samples are small (3 runs per query on Ollama, 2 on Groq); the earlier index-first Ollama runs made with a first step that did not report the scope are kept as `variance_ollama_progressive_a.json`, and are not in the table.
 
+## 7. Refine 4: plan-coverage guard for progressive disclosure
+
+Progressive disclosure shows the Planner less, so it could plan with too few tools. `python -m evals.plan_coverage --provider P --mode full|progressive` runs ONLY the Planner (no tool calls) on 8 request types whose essential checks are obvious from the request (a splitting request needs `detect_splitting`; a price-outlier request is satisfied by `detect_price_anomalies` or `compute_price_benchmark`; the two combined requests Q1 and Q2 need both of their checks). Coverage = essential checks present in the model's own plan / essential checks (the follow-up rules that run during an investigation are not counted). One planning run per request type and mode.
+
+| Provider | Mode | Request types | Essential checks present | Coverage | Distinct tools per plan (mean) | Planning tokens per request (median) |
+|---|---|---|---|---|---|---|
+| Ollama `qwen2.5:7b` | full catalogue | 8 | 10 / 10 | 100% | 2.6 | 1,203 |
+| Ollama `qwen2.5:7b` | index first | 8 | 10 / 10 | 100% | 2.0 | 1,056 |
+| Groq `qwen/qwen3.8-27b` | full catalogue | 8 | 10 / 10 | 100% | 4.4 | 2,022 |
+| Groq `qwen/qwen3.8-27b` | index first | 8 | 10 / 10 | 100% | 3.0 | 2,565 |
+
+Ollama: tools in each plan (full catalogue | index first); a check is satisfied when any tool of its group is planned.
+
+| Case | Request type | Essential | Full catalogue | Index first |
+|---|---|---|---|---|
+| P1 | splitting | detect_splitting | search_awards, detect_splitting | search_awards, detect_splitting |
+| P2 | non-competitive method | detect_noncompetitive_method | search_awards, detect_noncompetitive_method, detect_splitting | search_awards, detect_noncompetitive_method |
+| P3 | supplier concentration | supplier_concentration | search_awards, supplier_concentration, detect_noncompetitive_method | supplier_concentration |
+| P4 | price outliers | detect_price_anomalies/compute_price_benchmark | search_awards, detect_price_anomalies | search_awards, detect_price_anomalies |
+| P5 | price comparison | detect_price_anomalies/compute_price_benchmark | search_awards, compute_price_benchmark, detect_price_anomalies | search_awards, compute_price_benchmark |
+| P6 | splitting + price (Q1) | detect_splitting + detect_price_anomalies | search_awards, detect_splitting, detect_price_anomalies | search_awards, detect_splitting, detect_price_anomalies |
+| P7 | non-competitive + concentration (Q2) | detect_noncompetitive_method + supplier_concentration | search_awards, detect_noncompetitive_method, supplier_concentration | detect_noncompetitive_method, supplier_concentration |
+| P8 | supplier-scoped splitting | detect_splitting | search_awards, detect_splitting | search_awards, detect_splitting |
+
+Groq: tools in each plan (full catalogue | index first); a check is satisfied when any tool of its group is planned.
+
+| Case | Request type | Essential | Full catalogue | Index first |
+|---|---|---|---|---|
+| P1 | splitting | detect_splitting | search_awards, detect_splitting, supplier_concentration, detect_noncompetitive_method, detect_price_anomalies | search_awards, detect_splitting, supplier_concentration, detect_noncompetitive_method |
+| P2 | non-competitive method | detect_noncompetitive_method | detect_noncompetitive_method, supplier_concentration, search_awards, detect_price_anomalies, detect_splitting | search_awards, detect_noncompetitive_method, supplier_concentration, detect_splitting |
+| P3 | supplier concentration | supplier_concentration | supplier_concentration, detect_noncompetitive_method, detect_splitting, detect_price_anomalies, search_awards | supplier_concentration, search_awards |
+| P4 | price outliers | detect_price_anomalies/compute_price_benchmark | search_awards, detect_price_anomalies, supplier_concentration | search_awards, detect_price_anomalies |
+| P5 | price comparison | detect_price_anomalies/compute_price_benchmark | search_awards, detect_price_anomalies, compute_price_benchmark, supplier_concentration, detect_noncompetitive_method | search_awards, detect_price_anomalies, compute_price_benchmark |
+| P6 | splitting + price (Q1) | detect_splitting + detect_price_anomalies | search_awards, detect_splitting, detect_price_anomalies, supplier_concentration, detect_noncompetitive_method | search_awards, detect_splitting, detect_price_anomalies, supplier_concentration |
+| P7 | non-competitive + concentration (Q2) | detect_noncompetitive_method + supplier_concentration | search_awards, detect_noncompetitive_method, supplier_concentration, detect_splitting, detect_price_anomalies | search_awards, detect_noncompetitive_method, supplier_concentration |
+| P8 | supplier-scoped splitting | detect_splitting | search_awards, detect_splitting | search_awards, detect_splitting |
+
+**Result.** Every essential check was planned in both modes on both providers, so no safety-net rule was added (the rule would have been a `rules.py` entry mapping a request pattern to a required tool, added only if coverage dropped). Two cautions: the sample is one planning run per request type, and the metric checks that the right tool is *present*, not that the plan is good. The index-first plans were tighter on Ollama (for P2 and P3 the full-catalogue planner added unrelated tools) and, on Groq, used more planning tokens than the full catalogue (about +27% median), the same cost pattern as section 6.
+
