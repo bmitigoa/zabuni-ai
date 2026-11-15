@@ -78,8 +78,11 @@ class ChatLLM:
     """One model: every agent node asks for a pydantic schema and gets a validated object back."""
 
     def __init__(self, chat: Any, name: str, max_retries: int, backoff_base_s: float, max_wait_s: float = 90.0, *,
-                 rules: dict[str, Any] | None = None, ledger: UsageLedger | None = None) -> None:
+                 rules: dict[str, Any] | None = None, ledger: UsageLedger | None = None,
+                 kind_caps: dict[str, int] | None = None) -> None:
         self.chat, self.name = chat, name
+        self.kind_caps = dict(kind_caps or {})             # reply cap (tokens) for specific call kinds, e.g. {'synth': 1500}
+        self._capped: dict[str, Any] = {}
         self.provider, _, self.model = name.partition(":")
         self.max_retries, self.backoff_base_s, self.max_wait_s = int(max_retries), float(backoff_base_s), float(max_wait_s)
         self.rules, self.ledger = rules, ledger
@@ -134,12 +137,22 @@ class ChatLLM:
             self.audit.event("quota_report", model=self.name, **report, window="day" if daily else "minute",
                              source="provider 429 message")
 
+    def _chat_for(self, kind: str) -> Any:
+        """The chat model for this call kind: a copy with the kind's reply cap when rules set one (num_predict for Ollama, max_tokens for Groq)."""
+        cap = self.kind_caps.get(kind)
+        if not cap or not hasattr(self.chat, "model_copy"):
+            return self.chat
+        if kind not in self._capped:
+            field = "num_predict" if self.provider == "ollama" else "max_tokens"
+            self._capped[kind] = self.chat.model_copy(update={field: int(cap)})
+        return self._capped[kind]
+
     # ----------------------------------------------------------------- the call
     async def structured(self, schema: type[T], system: str, user: str, kind: str = "llm") -> T:
         """Ask for output matching `schema`. Retries on rate limits (honouring the provider's wait hint) and on invalid or
         missing output (feeding the validation error back). Raises LLMQuotaError when the model's quota or rate limit
         stops it, LLMError for anything else."""
-        runnable = self.chat.with_structured_output(schema, include_raw=True)
+        runnable = self._chat_for(kind).with_structured_output(schema, include_raw=True)
         messages: list[Any] = [SystemMessage(content=system), HumanMessage(content=user)]
         last, rate_limited = "no attempt made", False
         for attempt in range(self.max_retries + 1):
@@ -271,5 +284,5 @@ def create_llm(settings: Settings, rules: dict[str, Any], ledger: UsageLedger | 
         assert_open_weights(m, agent_cfg["open_weights_families"])
         chain.append(ChatLLM(build_chat(settings.provider, m, settings, agent_cfg), f"{settings.provider}:{m}",
                              agent_cfg["llm_max_retries"], agent_cfg["llm_backoff_base_s"], agent_cfg["llm_max_wait_s"],
-                             rules=rules, ledger=ledger))
+                             rules=rules, ledger=ledger, kind_caps=(agent_cfg.get("llm_max_tokens_by_kind") or {}).get(settings.provider, {})))
     return FallbackLLM(chain)

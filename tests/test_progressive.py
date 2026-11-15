@@ -129,3 +129,48 @@ def test_a_request_with_no_scope_is_stopped_after_the_first_model_call(tmp_path)
     llm = FakeLLM({ToolChoice: ToolChoice(tools=["search_awards"]), Plan: PLAN})
     state, _ = run_scenario(llm, tmp_path)
     assert state["scope_request"] and state["results"] == [] and llm.calls == 1 and "Plan" not in llm.prompts
+
+
+def test_progressive_disclosure_is_a_per_provider_setting():
+    from agent.nodes import progressive_enabled
+    table = {"ollama": True, "groq": False, "default": True}
+    assert progressive_enabled(table, "ollama:qwen2.5:7b") and not progressive_enabled(table, "groq:qwen/qwen3.8-27b")
+    assert progressive_enabled(table, "fake:deterministic")                 # any other provider: the default entry
+    assert progressive_enabled(True, "groq:x") and not progressive_enabled(False, "ollama:x")      # a plain bool applies to all
+
+
+def test_the_shipped_default_matches_the_measurement():
+    from mcp_server.rules import load_rules
+    table = load_rules()["agent"]["progressive_disclosure"]
+    assert table["ollama"] is True and table["groq"] is False
+
+
+# ============================================================================= per-kind reply cap (the synthesiser truncation found by the Q1 measurement)
+class CapChat(FakeChat):
+    def __init__(self, replies, num_predict=900):
+        super().__init__(replies)
+        self.num_predict = num_predict
+
+    def model_copy(self, update):
+        clone = CapChat([], self.num_predict)
+        clone.runnable, clone.num_predict = self.runnable, update.get("num_predict", self.num_predict)
+        clone.updated = update
+        return clone
+
+
+def test_a_call_kind_with_a_cap_uses_a_copy_of_the_model_with_that_reply_limit():
+    good = Plan(objective="x", scope=Scope(), steps=[PlanStep(tool="t", args={}, reason="r")])
+    chat = CapChat([{"parsed": good, "parsing_error": None, "raw": Usage()}] * 2)
+    llm = ChatLLM(chat, "ollama:fake", 1, 0, kind_caps={"synth": 1500})
+    capped = llm._chat_for("synth")
+    assert capped is not chat and capped.num_predict == 1500 and capped.updated == {"num_predict": 1500}
+    assert llm._chat_for("synth") is capped                                  # built once
+    assert llm._chat_for("plan") is chat and chat.num_predict == 900          # other kinds keep the global cap; the original is untouched
+
+
+def test_groq_uses_max_tokens_and_the_shipped_caps_match_the_measurement():
+    from mcp_server.rules import load_rules
+    caps = load_rules()["agent"]["llm_max_tokens_by_kind"]
+    assert caps["ollama"]["synth"] > load_rules()["agent"]["llm_max_tokens"] and caps["groq"] == {}
+    chat = CapChat([])
+    assert ChatLLM(chat, "groq:fake", 1, 0, kind_caps={"synth": 700})._chat_for("synth").updated == {"max_tokens": 700}

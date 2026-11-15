@@ -139,6 +139,15 @@ async def _choose_tools(ctx: AgentContext, query: str, tools: list[ToolInfo]) ->
     return chosen, pick.scope.model_dump()
 
 
+def progressive_enabled(setting: Any, model_name: str) -> bool:
+    """Is progressive disclosure on for this model? `setting` is a bool, or a table keyed by provider (the part of the model name
+    before ':', e.g. 'ollama' in 'ollama:qwen2.5:7b') with a 'default' entry for any other provider (such as a test double)."""
+    if isinstance(setting, dict):
+        provider = str(model_name).partition(":")[0]
+        return bool(setting.get(provider, setting.get("default", True)))
+    return bool(setting)
+
+
 def _scope_request(ctx: AgentContext, state: AgentState, objective: str, scope: dict[str, Any]) -> dict[str, Any]:
     """The scope guard's answer: ask the reviewer for a buyer, supplier or period instead of scanning all of Kenya (no tool runs)."""
     message = ctx.cfg["scope_request_message"]
@@ -152,7 +161,7 @@ def _scope_request(ctx: AgentContext, state: AgentState, objective: str, scope: 
 async def planner(state: AgentState, ctx: AgentContext) -> dict[str, Any]:
     """Ask the LLM for a structured plan built from the *discovered* tool catalogue; validate it; queue the steps."""
     tools = ctx.plannable
-    if ctx.cfg.get("progressive_disclosure"):
+    if progressive_enabled(ctx.cfg.get("progressive_disclosure"), getattr(ctx.llm, "name", "")):
         tools, early_scope = await _choose_tools(ctx, state["query"], tools)       # full schemas are disclosed for the chosen tools only
         if early_scope is not None:
             grounded_early, removed_early = policy.ground_scope(early_scope, state["query"])

@@ -227,6 +227,10 @@ DEFAULT_RULES: dict[str, Any] = {
         "llm_backoff_base_s": 5.0,            # rate-limit waits: 5, 10, 20, 40 s (spans a one-minute limit window)
         "llm_max_wait_s": 90.0,               # longest single wait honoured when the provider says "try again in N s"
         "llm_max_tokens": 900,                # cap on each reply; Groq's free tier allows only 1000 output tokens/minute
+        # Refine 3: reply cap per provider and call kind (overrides llm_max_tokens). Measured on Ollama qwen2.5:7b: the Synthesiser's
+        # reply for 7-8 flags is ~850-900 tokens, so the 900 cap truncated it (invalid JSON) and the call was retried (2,700 wasted
+        # tokens in 2 of 3 full-catalogue Q1 runs). Groq stays at llm_max_tokens: its free tier allows 1,000 output tokens a minute.
+        "llm_max_tokens_by_kind": {"ollama": {"synth": 1500}, "groq": {}},
         "llm_temperature": 0.0,               # deterministic-as-possible planning and synthesis
         "llm_timeout_s": 60.0,
         # Hard rule 2: a configured model's name must contain one of these open-weights family names.
@@ -241,7 +245,10 @@ DEFAULT_RULES: dict[str, Any] = {
         "synth_reserve_tokens": 4000,         # kept back so the Synthesiser can still run when the investigation is cut short
         "max_clarify_tokens": 6000,           # most tokens one clarification round may use
         # --- token economy
-        "progressive_disclosure": True,       # Refine 3: the Planner first sees a one-line-per-tool INDEX, then full schemas only for the tools it chose
+        # Refine 3: the Planner first sees a one-line-per-tool INDEX, then full schemas only for the tools it chose. A bool, or a
+        # per-provider table (measured: it saves tokens on the local 7B model, -49% prompt tokens per call, and costs +20% total
+        # tokens on Groq Qwen 27B, where the extra index call outweighs the saving; see EVALS.md section 6).
+        "progressive_disclosure": {"ollama": True, "groq": False, "default": True},
         "index_brief_chars": 90,              # characters of each tool description shown in the index
         "max_chosen_tools": 6,                # most tools the first planning step may choose
         "catalogue_brief_chars": 220,         # the Planner sees only the first sentence(s) of each tool description
