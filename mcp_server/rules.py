@@ -43,6 +43,7 @@ DEFAULT_RULES: dict[str, Any] = {
         # Refine 2: input limits enforced INSIDE the tools (a client other than our agent cannot skip them)
         "max_name_chars": 200,                # a buyer, supplier, keyword, id, ocid or role argument longer than this is refused
         "max_text_chars": 2000,               # an explanation, reason, answer or title longer than this is refused
+        "decisions_listed_max": 200,          # flags listed by the decisions://run/{run_id} resource
         "max_list_items": 100,                # a list argument (years, thresholds, flag ids, evidence, notes) longer than this is refused
     },
     "boundaries": {
@@ -205,6 +206,13 @@ DEFAULT_RULES: dict[str, Any] = {
             r"\b(usiweke|usiripoti|usitoe|usifichue|usitaje)\b[^.\n]{0,15}\bbendera\b",
             r"\bmaagizo\s+(mapya|yote)\b",
         ],
+    },
+    "telemetry": {
+        # Refine 4: OpenTelemetry spans (run -> LLM call -> tool call) written next to the audit log; no collector, no network.
+        "enabled": True,
+        "file": "traces.jsonl",               # in the logs directory, one OTel span per line
+        "console": False,                     # also print spans to stderr (or set ZABUNI_OTEL_CONSOLE=1)
+        "query_chars": 200,                   # how much of the request text is kept on the run span
     },
     "demo": {
         # Hosted-demo guard (the Streamlit app on Day 5 uses it)
