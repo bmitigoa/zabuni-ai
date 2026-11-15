@@ -200,7 +200,10 @@ def main() -> None:
     cases, groq, ollama = load("cases.json"), load("variance_groq.json"), load("variance_ollama.json")
     out = ["# EVALS", "", "Real runs only: every number below was produced by the scripts in `evals/` on the frozen PPRA snapshot (8 Oct 2026) and is stored in `evals/results/`. "
            "Reproduce: `python -m evals.run_cases`, `python -m evals.variance --provider ollama --runs 5`, `python -m evals.variance --provider groq --runs 2`, "
-           "`python -m evals.render_evals`. Failures are kept visible.", ""]
+           "`python -m evals.render_evals`. Failures are kept visible.", "",
+           "**Two vintages in this file.** Sections 1-5 are the `v1.0-submission` runs (12 Oct 2026) and are kept as submitted; they are not re-run. Sections 6-7 were added for `v1.1-summit` (15 Nov 2026): "
+           "a before/after measurement of progressive disclosure on two providers (`python -m evals.variance --provider P --runs N --mode full|progressive`, with per-call tokens, malformed attempts and plan validity recorded) "
+           "and a plan-coverage guard (`python -m evals.plan_coverage --provider P --mode full|progressive`). The v1.1 reply-cap and give-up changes for malformed Synthesiser output are covered by mocked tests (`tests/test_resilience.py`) and were not re-measured on a live model.", ""]
     if cases:
         out += cases_section(cases) + [""]
     out += ["## 2. The intentional failure: \"hello\" produced 40 flags", "",

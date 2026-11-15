@@ -2,6 +2,8 @@
 
 Real runs only: every number below was produced by the scripts in `evals/` on the frozen PPRA snapshot (8 Oct 2026) and is stored in `evals/results/`. Reproduce: `python -m evals.run_cases`, `python -m evals.variance --provider ollama --runs 5`, `python -m evals.variance --provider groq --runs 2`, `python -m evals.render_evals`. Failures are kept visible.
 
+**Two vintages in this file.** Sections 1-5 are the `v1.0-submission` runs (12 Oct 2026) and are kept as submitted; they are not re-run. Sections 6-7 were added for `v1.1-summit` (15 Nov 2026): a before/after measurement of progressive disclosure on two providers (`python -m evals.variance --provider P --runs N --mode full|progressive`, with per-call tokens, malformed attempts and plan validity recorded) and a plan-coverage guard (`python -m evals.plan_coverage --provider P --mode full|progressive`). The v1.1 reply-cap and give-up changes for malformed Synthesiser output are covered by mocked tests (`tests/test_resilience.py`) and were not re-measured on a live model.
+
 ## 1. Cases (21): 18 pass, 3 fail, 0 error
 
 Run on 2026-10-12 16:15:51 against the frozen snapshot with the real `zabuni-mcp` server (`python -m evals.run_cases`). Detection cases (D) test each rule on a known positive and a known negative with no model involved. Agent cases (A) test the agent's guards and the human gate with a scripted stand-in for the LLM, so they are deterministic and test **our code, not a model** (model behaviour is in section 4). False-alarm cases (F) are practitioner-style situations where a flag probably has a lawful explanation: **a raised flag is a FAIL on purpose**, because the rules cannot tell lots, frameworks or emergencies from splitting. Failures are kept, not tuned away.
