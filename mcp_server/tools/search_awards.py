@@ -31,7 +31,7 @@ def search_awards(buyer: BuyerArg = None, supplier: SupplierArg = None, title_ke
     sort = (sort_by or "newest").strip().lower()
     if sort not in SORTS:
         raise ToolInputError(f"sort_by must be one of {list(SORTS)}.")
-    b, s, kw = clean_text(buyer), clean_text(supplier), clean_text(title_keyword)
+    b, s, kw = clean_text(buyer, "buyer"), clean_text(supplier, "supplier"), clean_text(title_keyword, "title_keyword")
     d_from, d_to = clean_date(date_from, "date_from"), clean_date(date_to, "date_to")
     if not any([b, s, kw, d_from, d_to]):
         raise ToolInputError("Provide at least one filter: buyer, supplier, title_keyword, date_from or date_to.")

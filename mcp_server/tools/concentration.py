@@ -50,7 +50,7 @@ def supplier_concentration(buyer: BuyerArg = None, years: YearsArg = None,
     params = {"buyer": buyer, "years": yrs, "limit": limit, "min_awards": sc["min_awards"], "flag_share": sc["flag_share"]}
     warnings = ["Years filter excludes awards with no valid date."] if yrs else []
     cte = base_cte(valid_only=False)
-    b = clean_text(buyer)
+    b = clean_text(buyer, "buyer")
     args: list[Any] = []
     scope = year_filter(yrs)
     if b:

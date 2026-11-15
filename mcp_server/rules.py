@@ -40,6 +40,15 @@ DEFAULT_RULES: dict[str, Any] = {
         "candidates_shown": 10,               # buyer names listed when a name is ambiguous
         "fuzzy_matches": 5,                   # similar buyer names suggested for an unknown name
         "fuzzy_cutoff": 0.5,                  # minimum similarity (0-1) for a suggested name
+        # Refine 2: input limits enforced INSIDE the tools (a client other than our agent cannot skip them)
+        "max_name_chars": 200,                # a buyer, supplier, keyword, id, ocid or role argument longer than this is refused
+        "max_text_chars": 2000,               # an explanation, reason, answer or title longer than this is refused
+        "max_list_items": 100,                # a list argument (years, thresholds, flag ids, evidence, notes) longer than this is refused
+    },
+    "boundaries": {
+        # Refine 2: the ONLY tools that may open the flags database for writing; every other tool is read-only at the database
+        # connection (the analysis database is always read-only, with external file access switched off).
+        "write_tools": ["flag_finding", "record_decision", "attach_clarification", "draft_eval_memo"],
     },
     "categories": ["goods", "works", "services"],
     # Ordered: the first entry whose keywords occur in the (upper-cased) buyer name wins; no match -> default_buyer_type.
@@ -189,6 +198,12 @@ DEFAULT_RULES: dict[str, Any] = {
             r"^\s*(#+\s*)?(system|assistant|user|human|ai)\s*:",
             r"<\s*/?\s*(system|assistant|user|instructions?|tool_call|function_call|untrusted_data)\b",
             r"\bjailbreak\b|\bdeveloper mode\b|\bDAN\b mode",
+            # Swahili (the data is Kenyan): "ignore the instructions", "approve all", "reject/remove all flags", "do not report the flag"
+            r"\b(puuza|upuuze|sahau|usahau|acha|kataa)\b[^.\n]{0,40}\b(maagizo|maelekezo|amri|kanuni)\b",
+            r"\b(idhinisha|uidhinishe|kubali|ukubali)\b[^.\n]{0,20}\b(zote|yote|kila|wote)\b",
+            r"\b(kataa|ondoa|futa|ondoe|ufute)\b[^.\n]{0,20}\b(zote|yote|bendera)\b[^.\n]{0,15}\b(bendera|zote|yote)\b",
+            r"\b(usiweke|usiripoti|usitoe|usifichue|usitaje)\b[^.\n]{0,15}\bbendera\b",
+            r"\bmaagizo\s+(mapya|yote)\b",
         ],
     },
     "demo": {

@@ -6,7 +6,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from mcp_server.common import (ToolInputError, base_cte, buyer_problem, clean_text, clean_years, envelope, ev,
+from mcp_server.common import (ToolInputError, base_cte, buyer_problem, check_list, clean_text, clean_years, envelope, ev,
                                evidence_cap, frame, norm, rows, rules, year_filter)
 from mcp_server.registry import tool
 from mcp_server.toolkit import award_detail, BuyerArg, LimitArg, MinAwardsArg, SupplierArg, ThresholdsArg, WindowArg, YearsArg, clamp, date_text, make_flag, ranking_limit, severity_hint
@@ -63,6 +63,7 @@ def detect_splitting(buyer: BuyerArg = None, supplier: SupplierArg = None, windo
     window = clamp(window_days if window_days is not None else sp["window_days"], 1, int(sp["window_days_max"]))
     min_n = clamp(min_awards if min_awards is not None else sp["min_awards"],
                   int(sp["min_awards_floor"]), int(sp["min_awards_max"]))
+    check_list(thresholds_kes, "thresholds_kes")
     thresholds = sorted({float(t) for t in (thresholds_kes or sp["thresholds_kes"]) if t and float(t) > 0})
     if not thresholds:
         raise ToolInputError("thresholds_kes must contain at least one positive number.")
@@ -72,14 +73,14 @@ def detect_splitting(buyer: BuyerArg = None, supplier: SupplierArg = None, windo
               "thresholds_kes": thresholds, "years": yrs, "near_below_ratio": sp["near_below_ratio"], "limit": limit}
     warnings: list[str] = []
     conds, args = [], []
-    b = clean_text(buyer)
+    b = clean_text(buyer, "buyer")
     if b:
         bn, problem = buyer_problem(b, params)
         if problem:
             return problem
         conds.append("buyer_norm = ?"); args.append(bn)
         params["buyer_resolved"] = bn
-    s = clean_text(supplier)
+    s = clean_text(supplier, "supplier")
     if s:
         sn = norm(s)
         if not sn:

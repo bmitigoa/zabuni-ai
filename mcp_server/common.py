@@ -38,7 +38,8 @@ def cursor() -> duckdb.DuckDBPyConnection:
             raise ToolInputError(
                 f"Database not found at {DB_PATH}. Build it first: python data/loader.py"
             )
-        _con = duckdb.connect(str(DB_PATH), read_only=True)
+        # read-only, and no file/network access from SQL: a read tool cannot COPY data out or read other files
+        _con = duckdb.connect(str(DB_PATH), read_only=True, config={"enable_external_access": False})
     return _con.cursor()
 
 
@@ -92,15 +93,37 @@ def ev(ocid: str, award_id: str | None, field: str, value: Any) -> dict[str, Any
 
 
 # ---------------------------------------------------------------- input validation
-def clean_text(value: str | None) -> str | None:
+def clean_text(value: str | None, name: str = "argument") -> str | None:
+    """Strip; None when empty. A value longer than limits.max_name_chars is refused (checked here, server-side, for every tool)."""
     value = (value or "").strip()
+    limit = int(rules()["limits"]["max_name_chars"])
+    if len(value) > limit:
+        raise ToolInputError(f"{name} is too long ({len(value)} characters; the limit is {limit}).")
     return value or None
+
+
+def long_text(value: str | None, name: str) -> str:
+    """Stripped free text (explanation, reason, answer, title); refused above limits.max_text_chars."""
+    value = (value or "").strip()
+    limit = int(rules()["limits"]["max_text_chars"])
+    if len(value) > limit:
+        raise ToolInputError(f"{name} is too long ({len(value)} characters; the limit is {limit}).")
+    return value
+
+
+def check_list(value: Any, name: str) -> Any:
+    """Refuse a list argument with more than limits.max_list_items entries (None and non-lists pass through)."""
+    limit = int(rules()["limits"]["max_list_items"])
+    if isinstance(value, (list, tuple)) and len(value) > limit:
+        raise ToolInputError(f"{name} has too many items ({len(value)}; the limit is {limit}).")
+    return value
 
 
 def clean_years(years: list[int] | None, cfg: dict[str, Any]) -> list[int] | None:
     """Validate a list of calendar years against the data window; None means all years."""
     if not years:
         return None
+    check_list(years, "years")
     lo, hi = cfg["min_year"], cfg["max_year"]
     out = sorted({int(y) for y in years})
     bad = [y for y in out if not lo <= y <= hi]

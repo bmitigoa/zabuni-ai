@@ -17,6 +17,7 @@ import sys
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from mcp_server import boundary
 from mcp_server.common import ToolInputError, error
 from mcp_server.rules import load_rules
 
@@ -42,9 +43,13 @@ def safe(fn: Callable[..., dict[str, Any]]) -> Callable[..., dict[str, Any]]:
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> dict[str, Any]:
         try:
-            return fn(*args, **kwargs)
+            with boundary.running(fn.__name__):
+                return fn(*args, **kwargs)
         except ToolInputError as exc:
             return error(str(exc), kwargs)
+        except boundary.WriteNotAllowed as exc:
+            print(f"[zabuni-mcp] refused write: {exc}", file=sys.stderr)
+            return error(f"Refused: {exc}", kwargs)
         except Exception as exc:  # noqa: BLE001 - last line of defence for the agent loop
             print(f"[zabuni-mcp] {fn.__name__} failed: {exc!r}", file=sys.stderr)
             return error(f"Internal error in {fn.__name__}: {type(exc).__name__}: {exc}", kwargs)

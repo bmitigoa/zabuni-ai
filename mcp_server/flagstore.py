@@ -19,6 +19,7 @@ from typing import Any, Iterator
 
 import duckdb
 
+from mcp_server import boundary
 from mcp_server.common import ROOT, rules
 
 ID_HEX_CHARS = 12          # length of the random part of a generated id
@@ -57,6 +58,8 @@ def ensure_schema(con: duckdb.DuckDBPyConnection) -> None:
 @contextmanager
 def connect(read_only: bool = False) -> Iterator[duckdb.DuckDBPyConnection | None]:
     """Writable (creates the file and schema) or read-only connection; read-only yields None when no file exists yet."""
+    if not read_only:
+        boundary.require_writer("the flags database")      # server-side write allowlist (rules boundaries.write_tools)
     path = db_path()
     if read_only and not path.is_file():
         yield None
@@ -111,10 +114,11 @@ ERRORS_SHOWN = 5           # missing citations named in an error message
 
 def clean_evidence(evidence: Any, *, required: bool = True) -> list[dict[str, Any]]:
     """Validate a list of {ocid, award_id, field, value} items; an unsourced flag has no evidence and is rejected."""
-    from mcp_server.common import ToolInputError, clean_text      # local: avoids an import cycle at module load
+    from mcp_server.common import ToolInputError, check_list, clean_text      # local: avoids an import cycle at module load
 
     if evidence in (None, []) and not required:
         return []
+    check_list(evidence, "evidence")
     if not isinstance(evidence, list) or not evidence:
         raise ToolInputError("A flag needs evidence: a non-empty list of {ocid, award_id, field, value} items "
                              "taken from tool results. Unsourced flags are rejected.")

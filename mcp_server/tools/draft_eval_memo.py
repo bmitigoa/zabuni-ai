@@ -14,7 +14,7 @@ from typing import Any
 
 from mcp_server import flagstore
 from mcp_server.fmt import compile_patterns, find_injection, fmt_value, kes, md_safe
-from mcp_server.common import ToolInputError, clean_text, envelope, rules
+from mcp_server.common import ToolInputError, check_list, clean_text, envelope, long_text, rules
 from mcp_server.registry import tool
 
 TIMESTAMP_CHARS = 19        # 'YYYY-MM-DD HH:MM:SS'
@@ -117,8 +117,9 @@ def draft_eval_memo(run_id: str | None = None, flag_ids: list[str] | None = None
     cfg = rules()
     fl, memo_cfg = cfg["flags"], cfg["memo"]
     params = {"run_id": run_id, "flag_ids": flag_ids, "run_notes": run_notes, "title": title}
-    ids = [i.strip() for i in (flag_ids or []) if i and i.strip()]
-    rid = clean_text(run_id)
+    check_list(flag_ids, "flag_ids"); check_list(run_notes, "run_notes")
+    ids = [clean_text(i, "flag_id") for i in (flag_ids or []) if i and i.strip()]
+    rid = clean_text(run_id, "run_id")
     if not ids and not rid:
         raise ToolInputError("Provide run_id or flag_ids: the memo needs to know which flags to consider.")
     where, args = [], []
@@ -126,7 +127,8 @@ def draft_eval_memo(run_id: str | None = None, flag_ids: list[str] | None = None
         where.append(f"flag_id IN ({', '.join('?' for _ in ids)})"); args += ids
     else:
         where.append("run_id = ?"); args.append(rid)
-    notes = [n.strip() for n in (run_notes or []) if n and n.strip()]
+    title_text = clean_text(long_text(title, "title"))                # every limit is checked before the database is opened
+    notes = [long_text(n, "run_notes item") for n in (run_notes or []) if n and n.strip()]
     with flagstore.connect() as con:
         rows_ = con.execute(f"SELECT {', '.join(flagstore.COLUMNS)} FROM flags WHERE {' AND '.join(where)} "
                             "ORDER BY created_at, flag_id", args).fetchall()
@@ -135,7 +137,7 @@ def draft_eval_memo(run_id: str | None = None, flag_ids: list[str] | None = None
         for f in flags:
             counts[f["status"]] = counts.get(f["status"], 0) + 1
         approved = [f for f in flags if f["status"] == fl["status_approved"]]
-        text_title = clean_text(title) or (f"run {rid}" if rid else "selected flags")
+        text_title = title_text or (f"run {rid}" if rid else "selected flags")
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         markdown = build_memo(approved, counts, con, text_title, rid, notes, memo_cfg, today)
         memo_id = "memo_" + uuid.uuid4().hex[:flagstore.ID_HEX_CHARS]

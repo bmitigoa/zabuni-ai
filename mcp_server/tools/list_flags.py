@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from mcp_server import flagstore
-from mcp_server.common import ToolInputError, clean_text, envelope, rules
+from mcp_server.common import ToolInputError, check_list, clean_text, envelope, rules
 from mcp_server.registry import tool
 from mcp_server.toolkit import clamp
 
@@ -27,16 +27,17 @@ def list_flags(run_id: str | None = None, status: str | None = None, flag_ids: l
     cfg = rules()
     fl = cfg["flags"]
     params = {"run_id": run_id, "status": status, "flag_ids": flag_ids, "limit": limit}
-    st = clean_text(status)
+    st = clean_text(status, "status")
     if st and st not in all_statuses(fl):
         raise ToolInputError(f"status must be one of {all_statuses(fl)}.")
     limit = clamp(limit, 1, int(cfg["limits"]["search_max"]))
     where, args = [], []
-    if clean_text(run_id):
+    if clean_text(run_id, "run_id"):
         where.append("run_id = ?"); args.append(run_id.strip())
     if st:
         where.append("status = ?"); args.append(st)
-    ids = [i.strip() for i in (flag_ids or []) if i and i.strip()]
+    check_list(flag_ids, "flag_ids")
+    ids = [clean_text(i, "flag_id") for i in (flag_ids or []) if i and i.strip()]
     if ids:
         where.append(f"flag_id IN ({', '.join('?' for _ in ids)})"); args += ids
     sql = (f"SELECT {', '.join(flagstore.COLUMNS)} FROM flags" + (" WHERE " + " AND ".join(where) if where else "")

@@ -85,7 +85,7 @@ def detect_noncompetitive_method(buyer: BuyerArg = None, years: YearsArg = None,
             comparison={"label": "awards of all Kenyan buyers", "n": baseline["n_awards"], "share": baseline["share_noncompetitive"],
                         "buyers": None, "years": None, "basis": "every buyer in the selected years", "note": "national baseline"})
 
-    b = clean_text(buyer)
+    b = clean_text(buyer, "buyer")
     if b:
         bn, problem = buyer_problem(b, params)
         if problem:

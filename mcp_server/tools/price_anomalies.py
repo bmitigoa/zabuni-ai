@@ -52,13 +52,13 @@ def detect_price_anomalies(buyer: BuyerArg = None, category: CategoryArg = None,
     cat = check_choice(category, categories(), "category")
     btype = check_choice(buyer_type, buyer_types(), "buyer_type")
     yrs = clean_years(years, cfg["data_cleaning"])
-    kw = clean_text(title_keyword)
+    kw = clean_text(title_keyword, "title_keyword")
     limit = ranking_limit(limit)
     params: dict[str, Any] = {"buyer": buyer, "category": cat, "buyer_type": btype, "years": yrs, "title_keyword": kw,
                               "limit": limit, "contamination": pa["contamination"], "random_state": pa["random_state"],
                               "min_cohort": pa["min_cohort"], "min_ratio_to_median": pa["min_ratio_to_median"]}
     warnings: list[str] = []
-    b = clean_text(buyer)
+    b = clean_text(buyer, "buyer")
     buyer_norm = None
     if b:
         buyer_norm, problem = buyer_problem(b, params)

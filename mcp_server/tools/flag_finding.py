@@ -16,7 +16,7 @@ from typing import Any
 import duckdb
 
 from mcp_server import flagstore
-from mcp_server.common import ToolInputError, clean_text, envelope, rules
+from mcp_server.common import ToolInputError, clean_text, envelope, long_text, rules
 from mcp_server.fmt import scrub
 from mcp_server.registry import TOOLS, tool
 
@@ -46,11 +46,12 @@ def flag_finding(ocid: str, rule: str, severity: str, explanation: str, evidence
     sev = (severity or "").strip().lower()
     if sev not in fl["severities"]:
         raise ToolInputError(f"severity must be one of {fl['severities']}.")
-    text = scrub((explanation or "").strip())                # no invisible or control characters in stored text
+    text = scrub(long_text(explanation, "explanation"))                # no invisible or control characters in stored text
     if len(text) < int(fl["min_explanation_chars"]):
         raise ToolInputError(f"explanation must be at least {fl['min_explanation_chars']} characters.")
     ev_items = flagstore.clean_evidence(evidence)
-    oc = clean_text(ocid)
+    oc = clean_text(ocid, "ocid")
+    run_id = clean_text(run_id, "run_id")
     if not oc or oc not in {e["ocid"] for e in ev_items}:
         raise ToolInputError("ocid must be one of the ocids cited in evidence.")
     flagstore.verify_citations(ev_items)
