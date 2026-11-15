@@ -22,6 +22,7 @@ if str(ROOT) not in sys.path:  # allow `mcp dev mcp_server/server.py` as well as
 from mcp.server.fastmcp import FastMCP  # noqa: E402
 from mcp.types import ToolAnnotations  # noqa: E402
 
+from mcp_server import decisions  # noqa: E402
 from mcp_server.common import ToolInputError  # noqa: E402
 from mcp_server.records import release_record  # noqa: E402
 from mcp_server.registry import TOOLS, discover_tools, render_doc  # noqa: E402
@@ -58,6 +59,24 @@ def release(ocid: str) -> str:
     """The stored OCDS record (tender, awards, supplier names) for an ocid, for citing a flag's source."""
     try:
         return json.dumps(release_record(ocid), default=str, indent=2)
+    except ToolInputError as exc:
+        return json.dumps({"error": str(exc)})
+
+
+@mcp.resource("decisions://run/{run_id}", mime_type="application/json")
+def run_decision_memory(run_id: str) -> str:
+    """Reviewer decisions for every flag of a run: role, decision, reason, time and the ocids each flag cites. Read-only."""
+    try:
+        return json.dumps(decisions.run_decisions(run_id), default=str, indent=2)
+    except ToolInputError as exc:
+        return json.dumps({"error": str(exc)})
+
+
+@mcp.resource("decisions://flag/{flag_id}", mime_type="application/json")
+def flag_decision_memory(flag_id: str) -> str:
+    """The decision history of one flag (reviewer role, decision, reason, time) with the ocids it cites. Read-only."""
+    try:
+        return json.dumps(decisions.flag_decision_history(flag_id), default=str, indent=2)
     except ToolInputError as exc:
         return json.dumps({"error": str(exc)})
 
