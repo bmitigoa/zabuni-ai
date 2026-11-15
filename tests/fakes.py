@@ -30,6 +30,12 @@ class FakeLLM:
     async def structured(self, schema: type[BaseModel], system: str, user: str, kind: str = "llm") -> BaseModel:
         self.calls += 1
         self.prompts.setdefault(schema.__name__, []).append((system, user))
+        if schema.__name__ == "ToolChoice" and schema not in self.script:      # default: choose every tool listed in the index
+            import re
+            plan = self.script.get(next((k for k in self.script if k.__name__ == "Plan"), None))
+            plan = plan[0] if isinstance(plan, list) and plan else plan
+            scope = plan.scope if hasattr(plan, "scope") else None                    # the scripted plan's scope, as a cooperative model would report it
+            return schema(tools=re.findall(r"^- (\w+):", user, re.M), **({"scope": scope} if scope is not None else {}))
         entry = self.script[schema]
         if isinstance(entry, list):
             entry = entry.pop(0) if len(entry) > 1 else entry[0]
