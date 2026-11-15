@@ -7,6 +7,7 @@ from typing import Any
 
 from mcp_server import flagstore
 from mcp_server.common import ToolInputError, clean_text, envelope, rules
+from mcp_server.fmt import scrub
 from mcp_server.registry import tool
 
 
@@ -24,7 +25,7 @@ def attach_clarification(flag_id: str, response: str, evidence: list[dict[str, A
     cfg = rules()
     fl = cfg["flags"]
     params = {"flag_id": flag_id, "run_id": run_id, "n_evidence": len(evidence or [])}
-    text = (response or "").strip()
+    text = scrub((response or "").strip())                   # no invisible or control characters in stored text
     if len(text) < int(fl["min_explanation_chars"]):
         raise ToolInputError(f"response must be at least {fl['min_explanation_chars']} characters.")
     new_evidence = flagstore.clean_evidence(evidence, required=False)

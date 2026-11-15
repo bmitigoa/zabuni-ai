@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from mcp_server.fmt import strip_invisible
+
 BANNER = ("**DRAFT: pending human review.** Everything below is a screening indicator produced from published OCDS data. "
           "No flag is a finding of wrongdoing, and nothing here recommends or awards a tender; the committee decides.")
 
@@ -59,4 +61,4 @@ def build_summary_md(state: dict[str, Any], run: dict[str, Any], awards_listed: 
         lines += [f"- {d['reason']}" + (f" ({', '.join(d['ocids'])})" if d.get("ocids") else "") for d in state["dropped"]]
         lines.append("")
     lines += ["## Limitations", ""] + [f"- {x}" for x in LIMITATIONS]
-    return "\n".join(lines) + "\n"
+    return strip_invisible("\n".join(lines)) + "\n"            # names come from the data: no escape sequences

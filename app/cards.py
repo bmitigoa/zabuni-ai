@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from mcp_server.fmt import fmt_value, kes
+from agent.untrusted import compile_patterns, find_injection
+from mcp_server.fmt import fmt_value, kes, md_safe
+from mcp_server.rules import load_rules
 
 SIGNAL_TITLES = {"compute_price_benchmark": "Price benchmark", "detect_price_anomalies": "Price anomaly (Isolation Forest)",
                  "detect_splitting": "Possible contract splitting", "detect_noncompetitive_method": "Non-competitive procurement share",
@@ -25,10 +27,20 @@ def split_evidence(flag: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dic
     return own, [e for e in flag["evidence"] if (e["ocid"], e["award_id"]) not in ids]
 
 
+_PATTERNS: list = []
+
+
+def reads_like_instruction(*texts: Any) -> str | None:
+    """The matched snippet if any of these data texts reads like an instruction to an AI (the card then warns the reviewer)."""
+    if not _PATTERNS:
+        _PATTERNS.extend(compile_patterns(load_rules()["untrusted"]))
+    return next((hit for t in texts if t for hit in [find_injection(str(t), _PATTERNS)] if hit), None)
+
+
 def award_line(a: dict[str, Any]) -> str:
-    parts = [a.get("buyer") or "unknown buyer", a.get("supplier") or "no supplier named", a.get("date") or "no date",
+    parts = [md_safe(a.get("buyer")) or "unknown buyer", md_safe(a.get("supplier")) or "no supplier named", a.get("date") or "no date",
              kes(a["amount_kes"]) if a.get("amount_kes") is not None else "no amount"]
-    return " · ".join(parts) + (f" — {a['title']}" if a.get("title") else "")
+    return " · ".join(parts) + (f" — {md_safe(a['title'])}" if a.get("title") else "")
 
 
 def comparison_text(comp: dict[str, Any] | None, scope: dict[str, Any]) -> tuple[str | None, bool]:
@@ -59,15 +71,21 @@ def card(flag: dict[str, Any], scope: dict[str, Any] | None = None) -> dict[str,
     signals = []
     for s in detail.get("signals") or [{"rule": flag["rule"], "summary": flag["explanation"], "metric": None, "threshold": None, "comparison": None}]:
         text, wider = comparison_text(s.get("comparison"), scope)
-        signals.append({"title": SIGNAL_TITLES.get(s["rule"], s["rule"]), "rule": s["rule"], "metric": s.get("metric") or s["summary"],
-                        "threshold": s.get("threshold"), "comparison": text, "comparison_wider": wider,
-                        "caveat": s.get("caveat")})
+        signals.append({"title": SIGNAL_TITLES.get(s["rule"], s["rule"]), "rule": s["rule"], "metric": md_safe(s.get("metric") or s["summary"]),
+                        "threshold": md_safe(s.get("threshold")) if s.get("threshold") else None, "comparison": md_safe(text) if text else None,
+                        "comparison_wider": wider, "caveat": s.get("caveat")})
     own, others = split_evidence(flag)
-    fmt = lambda items: [{**e, "shown": fmt_value(e["field"], e["value"])} for e in items]          # noqa: E731
+    fmt = lambda items: [{**e, "shown": md_safe(fmt_value(e["field"], e["value"]))} for e in items]          # noqa: E731
+    texts = [flag["explanation"], subject.get("name"), *[a.get(k) for a in subject.get("awards", []) for k in ("buyer", "supplier", "title")]]
+    hints = [md_safe(h) for h in detail.get("hints") or []]
+    if reads_like_instruction(*texts):
+        hints.append("A name or title in this record contains text that reads like an instruction to an AI. It is shown here as plain data; "
+                     "it was withheld from the language model and it changed nothing in this run.")
     return {"flag_id": flag["flag_id"], "severity": flag["severity"], "status": flag["status"], "rule": flag["rule"],
-            "subject_kind": subject.get("kind"), "subject_name": subject.get("name"),
+            "subject_kind": subject.get("kind"), "subject_name": md_safe(subject.get("name")) if subject.get("name") else None,
             "flagged": [{"line": award_line(a), "ocid": a["ocid"]} for a in subject.get("awards", [])],
-            "signals": signals, "comparison_note": detail.get("comparison_note"), "hints": detail.get("hints") or [],
+            "signals": signals, "comparison_note": md_safe(detail.get("comparison_note")) if detail.get("comparison_note") else None, "hints": hints,
             "provisional": any("(provisional)" in (s.get("threshold") or "") for s in detail.get("signals") or []),
-            "own_evidence": fmt(own), "comparison_evidence": fmt(others), "explanation": flag["explanation"],
-            "clarifications": flag.get("clarifications", [])}
+            "own_evidence": fmt(own), "comparison_evidence": fmt(others), "explanation": md_safe(flag["explanation"]),
+            "clarifications": [{**cl, "question": md_safe(cl.get("question")), "response": md_safe(cl.get("response"))}
+                               for cl in flag.get("clarifications", [])]}

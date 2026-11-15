@@ -18,7 +18,7 @@ from agent.llm import LLMError
 from agent.run import Printer
 from agent.session import log_run_usage, open_session
 from agent.settings import SettingsError, load_settings
-from mcp_server.fmt import fmt_value, kes
+from mcp_server.fmt import fmt_value, kes, strip_invisible
 
 DECISION_KEYS = {"a": "approve", "r": "reject", "c": "clarify"}
 
@@ -46,7 +46,7 @@ def show_flag(flag: dict[str, Any]) -> str:
         lines.append(f"      ocid {e['ocid']} | award {e['award_id']} | {e['field']} = {fmt_value(e['field'], e['value'])}")
     for c in flag.get("clarifications", []):
         lines.append(f"    earlier question: {c.get('question')}\n    answer from the agent: {c.get('response')}")
-    return "\n".join(lines)
+    return strip_invisible("\n".join(lines))                  # names come from the data: no escape sequences reach the terminal
 
 
 def collect_decisions(payload: dict[str, Any], ask: Callable[[str], str], role: str, min_reason: int) -> list[dict[str, Any]]:
