@@ -241,6 +241,9 @@ DEFAULT_RULES: dict[str, Any] = {
         "synth_reserve_tokens": 4000,         # kept back so the Synthesiser can still run when the investigation is cut short
         "max_clarify_tokens": 6000,           # most tokens one clarification round may use
         # --- token economy
+        "progressive_disclosure": True,       # Refine 3: the Planner first sees a one-line-per-tool INDEX, then full schemas only for the tools it chose
+        "index_brief_chars": 90,              # characters of each tool description shown in the index
+        "max_chosen_tools": 6,                # most tools the first planning step may choose
         "catalogue_brief_chars": 220,         # the Planner sees only the first sentence(s) of each tool description
         "ollama_num_ctx": 4096,               # context window requested from Ollama (its default may truncate prompts)
         "ollama_keep_alive": "15m",           # keep the local model loaded between calls

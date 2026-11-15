@@ -86,6 +86,7 @@ class ChatLLM:
         self.audit: Any = None
         self.run_id: str | None = None
         self.calls = self.tokens = self.prompt_tokens = self.completion_tokens = 0
+        self.attempts = self.malformed = 0           # model attempts, and those that returned unusable output (a malformed tool call)
         self.cost_usd = 0.0
         self.latency_s = 0.0
 
@@ -115,6 +116,12 @@ class ChatLLM:
                              total_tokens=total, cost_usd=cost, seconds=round(seconds, 2),
                              est_remaining_daily_tokens=remaining)
 
+    def _malformed_attempt(self, kind: str, reason: str) -> None:
+        """Count (and log) an attempt whose output could not be used: a malformed tool call or a schema mismatch."""
+        self.malformed += 1
+        if self.audit is not None:
+            self.audit.event("llm_malformed", kind=kind, model=self.name, reason=redact(reason)[:240])
+
     def _note_quota(self, message: str) -> None:
         """Remember the provider's own quota figures when a 429 states them."""
         report = parse_quota_report(message)
@@ -137,6 +144,7 @@ class ChatLLM:
         last, rate_limited = "no attempt made", False
         for attempt in range(self.max_retries + 1):
             started = time.time()
+            self.attempts += 1
             try:
                 out = await runnable.ainvoke(messages)
             except Exception as exc:  # noqa: BLE001 - provider SDKs raise many types; classify by text
@@ -156,6 +164,7 @@ class ChatLLM:
                     raise LLMError(f"{self.name}: {redact(last)[:300]}. Check MODEL / the API key: "
                                    "`python -m agent.models` lists the models this key can use.") from exc
                 rate_limited = False
+                self._malformed_attempt(kind, last)
                 messages.append(HumanMessage(content=f"Your previous reply was rejected by the API ({last[:300]}). "
                                                      "Reply again with valid output only."))
                 continue
@@ -167,6 +176,7 @@ class ChatLLM:
             if parsed is not None:
                 return parsed
             last = f"invalid output: {out.get('parsing_error')}"
+            self._malformed_attempt(kind, last)
             messages.append(HumanMessage(content=f"Your previous reply was not valid ({str(last)[:300]}). "
                                                  "Reply again with output that matches the schema exactly."))
         if rate_limited:
@@ -203,6 +213,8 @@ class FallbackLLM:
         return sum(getattr(m, attr) for m in self.chain)
 
     calls = property(lambda self: self._sum("calls"))
+    attempts = property(lambda self: self._sum("attempts"))
+    malformed = property(lambda self: self._sum("malformed"))
     tokens = property(lambda self: self._sum("tokens"))
     prompt_tokens = property(lambda self: self._sum("prompt_tokens"))
     completion_tokens = property(lambda self: self._sum("completion_tokens"))

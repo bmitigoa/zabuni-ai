@@ -17,10 +17,10 @@ from langgraph.types import interrupt
 from agent import policy
 from agent.audit import AuditLog
 from agent.budget import Budget
-from agent.discovery import ToolInfo, catalogue, compact_schema, planning_tools, tool_with_role
+from agent.discovery import ToolInfo, catalogue, compact_schema, planning_tools, tool_index, tool_with_role
 from agent.llm import LLMError, LLMQuotaError
 from agent.mcp_client import McpBackend, ToolCallFailed
-from agent.state import AgentState, ArgsFix, ClarifyAnswer, ClarifyPlan, Plan, SynthOutput
+from agent.state import AgentState, ArgsFix, ClarifyAnswer, ClarifyPlan, Plan, SynthOutput, ToolChoice
 from agent.untrusted import UntrustedGate, reads_like_instruction
 
 PLANNER_SYSTEM = """You plan an investigation of Kenyan public-procurement awards (OCDS data) for value-for-money and integrity risks. You never recommend or award anything; humans decide.
@@ -30,6 +30,10 @@ Use ONLY the tools listed. Each step: one tool, its arguments as a JSON string, 
 - 3 to 6 steps, broad checks first.
 - Return scope: the buyer and years found in the request (null if absent).
 Example: for "Review Acme Ltd 2021-2022" every step gets "buyer": "Acme Ltd" and "years": [2021, 2022] (or date_from/date_to)."""
+
+CHOOSE_SYSTEM = """You pick the tools for an investigation of Kenyan public-procurement awards (OCDS data). You never recommend or award anything.
+From the index choose the 3 to 6 tools that fit the request, broad checks first. Use exact tool names from the index only.
+Also return the scope: the buyer, supplier and years found in the request (null if absent). Never invent them."""
 
 FIX_SYSTEM = """A tool call failed. Return corrected arguments for the SAME tool as a JSON string in args_json, or give_up=true.
 Change as little as possible. Use only values from the error message, the candidates, the schema or the original arguments; never invent a value."""
@@ -109,9 +113,53 @@ def _stop(state: AgentState, reason: str) -> list[str]:
 
 
 # ----------------------------------------------------------------------------- Planner
+async def _choose_tools(ctx: AgentContext, query: str, tools: list[ToolInfo]) -> tuple[list[ToolInfo], dict[str, Any] | None]:
+    """Progressive disclosure, step 1: the model sees a compact INDEX (one line per tool) and names the tools it needs.
+    Only those tools' full argument lists go into the planning prompt. An unusable answer (an LLM error, no valid name)
+    falls back to the full catalogue, so this can make the prompt smaller but never make planning fail. The same call returns the
+    scope it found in the request, so a request with none is stopped by the scope guard after ONE model call, as before.
+    Returns (tools to disclose, the model's scope or None when the step failed)."""
+    index = tool_index(tools, int(ctx.cfg["index_brief_chars"]))
+    try:
+        pick = await ctx.llm.structured(ToolChoice, CHOOSE_SYSTEM, f"Request: {query}\n\nTool index:\n{index}", kind="tool_choice")
+    except LLMQuotaError:
+        raise
+    except LLMError as exc:
+        ctx.audit.event("tools_choice_fallback", reason=str(exc)[:200])
+        return tools, None
+    wanted = set(pick.tools)
+    chosen = [t for t in tools if t.name in wanted][: int(ctx.cfg["max_chosen_tools"])]
+    unknown = sorted(wanted - {t.name for t in tools})
+    if unknown:
+        ctx.audit.event("tools_choice_rejected", tools=unknown, valid_tools=[t.name for t in tools])
+    if not chosen:
+        ctx.audit.event("tools_choice_fallback", reason="no valid tool name in the choice")
+        return tools, pick.scope.model_dump()
+    ctx.audit.event("tools_chosen", chosen=[t.name for t in chosen], offered=len(tools))
+    return chosen, pick.scope.model_dump()
+
+
+def _scope_request(ctx: AgentContext, state: AgentState, objective: str, scope: dict[str, Any]) -> dict[str, Any]:
+    """The scope guard's answer: ask the reviewer for a buyer, supplier or period instead of scanning all of Kenya (no tool runs)."""
+    message = ctx.cfg["scope_request_message"]
+    ctx.audit.event("scope_request", query=state["query"], message=message)
+    return {"plan": {"objective": objective, "steps": []}, "scope": scope, "queue": [], "scope_request": message,
+            "steps_done": 0, "results": [], "notes": [], "stopped_reason": None, "stop_reasons": [], "decisions": [],
+            "suppressed": [], "clarifications": [], "flags_created": [], "capped": [],
+            "summary": message, "review_status": "needs_scope"}
+
+
 async def planner(state: AgentState, ctx: AgentContext) -> dict[str, Any]:
     """Ask the LLM for a structured plan built from the *discovered* tool catalogue; validate it; queue the steps."""
     tools = ctx.plannable
+    if ctx.cfg.get("progressive_disclosure"):
+        tools, early_scope = await _choose_tools(ctx, state["query"], tools)       # full schemas are disclosed for the chosen tools only
+        if early_scope is not None:
+            grounded_early, removed_early = policy.ground_scope(early_scope, state["query"])
+            if removed_early:                                              # the model invented part of the scope: drop what the request does not say
+                ctx.audit.event("scope_ungrounded", removed=removed_early, model_scope=early_scope, query=state["query"])
+            if not policy.has_scope(policy.merge_scope(grounded_early, state.get("scope_hint"))):      # scope guard before the second model call
+                return _scope_request(ctx, state, "", policy.merge_scope(grounded_early, state.get("scope_hint")))
     names = {t.name for t in tools}
     user = f"Request: {state['query']}\n\nTools:\n{catalogue(tools, int(ctx.cfg['catalogue_brief_chars']))}"
     steps: list[dict[str, Any]] = []
@@ -137,12 +185,7 @@ async def planner(state: AgentState, ctx: AgentContext) -> dict[str, Any]:
         ctx.audit.event("scope_ungrounded", removed=removed, model_scope=plan.scope.model_dump(), query=state["query"])
     scope = policy.merge_scope(grounded, state.get("scope_hint"))
     if not policy.has_scope(scope):                        # scope guard: ask instead of scanning all of Kenya
-        message = ctx.cfg["scope_request_message"]
-        ctx.audit.event("scope_request", query=state["query"], message=message)
-        return {"plan": {"objective": plan.objective, "steps": []}, "scope": scope, "queue": [], "scope_request": message,
-                "steps_done": 0, "results": [], "notes": [], "stopped_reason": None, "stop_reasons": [], "decisions": [],
-                "suppressed": [], "clarifications": [], "flags_created": [], "capped": [],
-                "summary": message, "review_status": "needs_scope"}
+        return _scope_request(ctx, state, plan.objective, scope)
     for s in steps:
         schema = ctx.by_name[s["tool"]].input_schema
         s["args"], dropped = policy.prune_unknown_args(s["args"], schema)          # a small model may invent an argument
