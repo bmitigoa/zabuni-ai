@@ -341,7 +341,7 @@ Each change answers one summit theme and was measured, not assumed. Numbers are 
 | **OpenTelemetry** | JSONL audit log only | the same facts as OTel spans (run -> LLM call -> tool call: tokens, cost, duration, provider, model, fallback) in `logs/traces.jsonl`, no collector; the JSONL log is kept | `python -m agent.traces` prints a trace as a tree; a real run: 20 spans, 7 malformed attempts and 2 fallbacks visible at a glance |
 | **Decision memory as MCP resources** | decisions only inside the flag store and the memo | `decisions://run/{run_id}` and `decisions://flag/{flag_id}`, read-only: reviewer role, decision, reason, time and the ocids each flag cites | 7 tests, including a read through the real stdio server |
 
-Test suite: **v1.0 296 passed, 1 skipped; v1.1 see the line below.** (Run `python -m pytest -q`; the one skipped test needs a live model.) Not built, listed as future work: a Streamable HTTP transport for `zabuni-mcp` alongside stdio, and an explicit UNKNOWN status for timed-out tool calls with resume from the checkpoint.
+Test suite: **v1.0: 296 passed, 1 skipped; v1.1: 492 passed, 1 skipped.** (Run `python -m pytest -q`; the one skipped test needs a live model.) Not built, listed as future work: a Streamable HTTP transport for `zabuni-mcp` alongside stdio, and an explicit UNKNOWN status for timed-out tool calls with resume from the checkpoint.
 
 **View the traces:** every agent session appends spans to `logs/traces.jsonl`. `python -m agent.traces` prints the newest traces as trees (`--run RUN_ID`, `--last N`); `ZABUNI_OTEL_CONSOLE=1` also prints spans to stderr while a run happens. The file is standard OpenTelemetry JSON.
 
