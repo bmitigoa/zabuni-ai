@@ -239,6 +239,10 @@ DEFAULT_RULES: dict[str, Any] = {
         # reply for 7-8 flags is ~850-900 tokens, so the 900 cap truncated it (invalid JSON) and the call was retried (2,700 wasted
         # tokens in 2 of 3 full-catalogue Q1 runs). Groq stays at llm_max_tokens: its free tier allows 1,000 output tokens a minute.
         "llm_max_tokens_by_kind": {"ollama": {"synth": 1500}, "groq": {}},
+        # Refine 5 (demo resilience): a call of this kind that returns unusable output this many times gives up at once, and the fallback
+        # chain does not pass it to the second model. The Synthesiser then uses the tools' own wording. (Measured: Qwen 27B returned malformed
+        # Synthesiser replies 5-8 times per run; each retry and each fallback attempt spent free-tier quota.)
+        "llm_malformed_limit_by_kind": {"synth": 2},
         "llm_temperature": 0.0,               # deterministic-as-possible planning and synthesis
         "llm_timeout_s": 60.0,
         # Hard rule 2: a configured model's name must contain one of these open-weights family names.

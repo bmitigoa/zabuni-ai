@@ -45,6 +45,11 @@ class LLMFormatError(LLMError):
     Another model may do better, so the fallback chain moves on; a quota error is a different failure (see LLMQuotaError)."""
 
 
+class LLMGaveUp(LLMFormatError):
+    """The per-call cap on malformed attempts was reached (rules agent.llm_malformed_limit_by_kind). The fallback chain does NOT hand
+    this call to the next model (its quota is not spent on a call that has already failed), and the caller uses the tools' own wording."""
+
+
 class LLMQuotaError(LLMError):
     """The provider's rate limit or quota stopped this model. Waiting is pointless; another model may still work."""
 
@@ -79,8 +84,9 @@ class ChatLLM:
 
     def __init__(self, chat: Any, name: str, max_retries: int, backoff_base_s: float, max_wait_s: float = 90.0, *,
                  rules: dict[str, Any] | None = None, ledger: UsageLedger | None = None,
-                 kind_caps: dict[str, int] | None = None) -> None:
+                 kind_caps: dict[str, int] | None = None, malformed_limits: dict[str, int] | None = None) -> None:
         self.chat, self.name = chat, name
+        self.malformed_limits = dict(malformed_limits or {})   # most malformed attempts one call of this kind may make, then it gives up
         self.kind_caps = dict(kind_caps or {})             # reply cap (tokens) for specific call kinds, e.g. {'synth': 1500}
         self._capped: dict[str, Any] = {}
         self.provider, _, self.model = name.partition(":")
@@ -119,11 +125,17 @@ class ChatLLM:
                              total_tokens=total, cost_usd=cost, seconds=round(seconds, 2),
                              est_remaining_daily_tokens=remaining)
 
-    def _malformed_attempt(self, kind: str, reason: str) -> None:
-        """Count (and log) an attempt whose output could not be used: a malformed tool call or a schema mismatch."""
+    def _malformed_attempt(self, kind: str, reason: str, in_call: int) -> None:
+        """Count (and log) an attempt whose output could not be used: a malformed tool call or a schema mismatch. `in_call` is how many
+        malformed attempts this call has made, this one included; at the kind's limit the call gives up (LLMGaveUp) instead of retrying."""
         self.malformed += 1
         if self.audit is not None:
             self.audit.event("llm_malformed", kind=kind, model=self.name, reason=redact(reason)[:240])
+        limit = int(self.malformed_limits.get(kind) or 0)
+        if limit and in_call >= limit:
+            if self.audit is not None:
+                self.audit.event("llm_gave_up", kind=kind, model=self.name, malformed_attempts=in_call, limit=limit)
+            raise LLMGaveUp(f"{self.name}: {kind} call gave up after {in_call} malformed attempt(s) (limit {limit}): {redact(reason)[:200]}")
 
     def _note_quota(self, message: str) -> None:
         """Remember the provider's own quota figures when a 429 states them."""
@@ -154,7 +166,7 @@ class ChatLLM:
         stops it, LLMError for anything else."""
         runnable = self._chat_for(kind).with_structured_output(schema, include_raw=True)
         messages: list[Any] = [SystemMessage(content=system), HumanMessage(content=user)]
-        last, rate_limited = "no attempt made", False
+        last, rate_limited, in_call = "no attempt made", False, 0
         for attempt in range(self.max_retries + 1):
             started = time.time()
             self.attempts += 1
@@ -177,7 +189,8 @@ class ChatLLM:
                     raise LLMError(f"{self.name}: {redact(last)[:300]}. Check MODEL / the API key: "
                                    "`python -m agent.models` lists the models this key can use.") from exc
                 rate_limited = False
-                self._malformed_attempt(kind, last)
+                in_call += 1
+                self._malformed_attempt(kind, last, in_call)
                 messages.append(HumanMessage(content=f"Your previous reply was rejected by the API ({last[:300]}). "
                                                      "Reply again with valid output only."))
                 continue
@@ -189,7 +202,8 @@ class ChatLLM:
             if parsed is not None:
                 return parsed
             last = f"invalid output: {out.get('parsing_error')}"
-            self._malformed_attempt(kind, last)
+            in_call += 1
+            self._malformed_attempt(kind, last, in_call)
             messages.append(HumanMessage(content=f"Your previous reply was not valid ({str(last)[:300]}). "
                                                  "Reply again with output that matches the schema exactly."))
         if rate_limited:
@@ -245,6 +259,8 @@ class FallbackLLM:
             model = self.chain[position]
             try:
                 return await model.structured(schema, system, user, kind)
+            except LLMGaveUp:
+                raise                  # the call already failed its allowance: do not spend the next model's quota on it
             except (LLMQuotaError, LLMFormatError) as exc:
                 reasons.append(f"{model.name}: {str(exc)[:200]}")
                 is_quota = isinstance(exc, LLMQuotaError)
@@ -284,5 +300,6 @@ def create_llm(settings: Settings, rules: dict[str, Any], ledger: UsageLedger | 
         assert_open_weights(m, agent_cfg["open_weights_families"])
         chain.append(ChatLLM(build_chat(settings.provider, m, settings, agent_cfg), f"{settings.provider}:{m}",
                              agent_cfg["llm_max_retries"], agent_cfg["llm_backoff_base_s"], agent_cfg["llm_max_wait_s"],
-                             rules=rules, ledger=ledger, kind_caps=(agent_cfg.get("llm_max_tokens_by_kind") or {}).get(settings.provider, {})))
+                             rules=rules, ledger=ledger, kind_caps=(agent_cfg.get("llm_max_tokens_by_kind") or {}).get(settings.provider, {}),
+                             malformed_limits=agent_cfg.get("llm_malformed_limit_by_kind") or {}))
     return FallbackLLM(chain)
