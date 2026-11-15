@@ -202,6 +202,19 @@ def main() -> None:
                 "one-line index and names the tools it needs, then sees full argument lists for those tools only. Both columns are the SAME code and the same rules except "
                 "`agent.progressive_disclosure`, measured with the same instrumentation (`python -m evals.variance --provider P --runs N --mode full|progressive`). "
                 "The numbers in sections 4-5 above are the v1.0 submission runs (before this instrumentation existed) and are kept as history.", ""] + r3
+        out += ["**How to read this.** (1) *Tokens*: on the local 7B model the index-first Planner shows a much smaller prompt per call (-49% mean) and saves 11% of a whole run, "
+                "even though it adds a call. On Groq's 27B model the index call costs 738 prompt tokens (the provider counts the tool schema it is sent), more than it saves, and a whole run uses "
+                "+20% tokens, so the shipped default is **per provider: on for Ollama, off for Groq** (`agent.progressive_disclosure`). "
+                "(2) *Latency*: planning takes longer on the CPU-only local model with two generations (+79%) while whole-run latency is about the same (-8%, within the noise of "
+                "three runs and of retries in the 'before' runs); Groq latency is dominated by rate-limit waits and malformed-call retries, not by prompt size, so it is not comparable. "
+                "(3) *Malformed tool calls*: the 'before' Ollama runs had 2 unusable attempts in 16, both a Synthesiser reply that hit the 900-token reply cap (about 2,700 tokens wasted each); "
+                "none in the 'after' runs. That is **not** an effect of progressive disclosure: the cap was then raised for the Synthesiser on Ollama (`agent.llm_max_tokens_by_kind`), "
+                "and a later run (`variance_ollama_progressive_cap.json`) had none either, but its reply (788 tokens) was under the old cap too, so this run does not prove the fix; "
+                "the unit tests do. On Groq, 14 of 20 / 14 of 24 attempts were unusable in both modes: Qwen 3.8 27B's malformed structured replies (already noted in section 4), "
+                "unchanged by this work. (4) *Quality*: the flagged awards are the same (overlap 0.97 on Ollama, 1.00 on Groq), but the index-first planner chooses fewer tools on Ollama Q2 "
+                "(2 tools instead of 3: it skipped `search_awards`) and on Groq it planned fewer distinct tools than the full-catalogue planner (3 or 4 instead of 5) in 3 of 4 runs, repeating `search_awards` in both Q2 runs, so it can narrow an investigation. "
+                "(5) Samples are small (3 runs per query on Ollama, 2 on Groq); the earlier index-first Ollama runs made with a first step that did not report the scope are kept as "
+                "`variance_ollama_progressive_a.json`, and are not in the table.", ""]
     (ROOT / "EVALS.md").write_text("\n".join(out) + "\n", encoding="utf-8")
     print("EVALS.md written")
 

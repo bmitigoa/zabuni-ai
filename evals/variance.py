@@ -118,17 +118,19 @@ def summarise(runs: list[dict[str, Any]]) -> dict[str, Any]:
     return out
 
 
-async def amain(provider: str, runs: int, mode: str) -> None:
+async def amain(provider: str, runs: int, mode: str, only: str | None = None, tag: str = "") -> None:
     settings = load_settings()
     rules_file = Path(tempfile.mkdtemp(prefix="zabuni_rules_")) / "rules.json"          # reaches the MCP server (ZABUNI_* is forwarded) and the agent
-    rules_file.write_text(json.dumps({"agent": {"progressive_disclosure": mode == "progressive"}}), encoding="utf-8")
+    rules_file.write_text(json.dumps({"agent": {"progressive_disclosure": mode == "progressive"}}), encoding="utf-8")   # a bool overrides the per-provider table
     os.environ["ZABUNI_RULES_FILE"] = str(rules_file)
     model = DEFAULT_MODELS[provider] if provider != settings.provider else settings.model
     settings = dataclasses.replace(settings, provider=provider, model=model)
-    path = RESULTS / f"variance_{provider}_{mode}.json"
+    path = RESULTS / f"variance_{provider}_{mode}{tag}.json"
     saved = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {"provider": provider, "model": model, "mode": mode, "runs": []}
     for i in range(runs):
         for q in QUERIES:
+            if only and q["id"] != only:
+                continue                                              # run a single query (memory-friendly: one run per invocation)
             if sum(1 for r in saved["runs"] if r["query"] == q["id"]) > i:
                 continue                                              # resume: this repetition is already recorded
             rec = await one_run(settings, q, mode)
@@ -151,9 +153,11 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--provider", choices=["ollama", "groq"], default="ollama")
     ap.add_argument("--runs", type=int, default=5)
+    ap.add_argument("--only", choices=[q["id"] for q in QUERIES], default=None, help="run only this query (resumes: finished runs are kept)")
+    ap.add_argument("--tag", default="", help="suffix for the results file, e.g. _cap for a run made after the reply-cap change")
     ap.add_argument("--mode", choices=["full", "progressive"], default="progressive")
     args = ap.parse_args()
-    asyncio.run(amain(args.provider, args.runs, args.mode))
+    asyncio.run(amain(args.provider, args.runs, args.mode, args.only, args.tag))
 
 
 if __name__ == "__main__":

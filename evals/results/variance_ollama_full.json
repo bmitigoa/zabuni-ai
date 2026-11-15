@@ -1,0 +1,474 @@
+{
+ "provider": "ollama",
+ "model": "qwen2.5:7b",
+ "mode": "full",
+ "runs": [
+  {
+   "query": "Q1",
+   "run_id": "run_20261115_162821_799d",
+   "mode": "full",
+   "ok": true,
+   "plan_tools": [
+    "search_awards",
+    "detect_splitting",
+    "detect_price_anomalies"
+   ],
+   "tool_calls": 16,
+   "n_flags": 8,
+   "flagged": [
+    "ocds-5whusi-043/2022/2023|20250205150331-52488",
+    "ocds-5whusi-1166469-3|20250205150330-52920",
+    "ocds-5whusi-1177969|20250205150309-43082",
+    "ocds-5whusi-1212735|20250205150330-52396",
+    "ocds-5whusi-1222048|20250205150330-52301",
+    "ocds-5whusi-1223916-2022/2023|20250205150317-42727",
+    "ocds-5whusi-1294861-2022/2023|20250205150323-50936",
+    "ocds-5whusi-239923-2022/2023|20250205150329-51767",
+    "ocds-5whusi-307A(1)/2022/2023|20250205150331-52493",
+    "ocds-5whusi-42686|20250205150132-43031",
+    "ocds-5whusi-GMC/GVN/Q/022/2022/2023|20250205150330-52114",
+    "ocds-5whusi-GMC/H/Q/86/1310033/2022-2023|20250205150328-51139",
+    "ocds-5whusi-GMC/K/D/056/2023/2024|20240703171733-91111",
+    "ocds-5whusi-GMC/K/Q/080/2023/2024|20240213144738-72478",
+    "ocds-5whusi-GMC/K/Q/151/2023/2024|20240206125130-71738",
+    "ocds-5whusi-GMC/W/Q/139/2022/2023|20250205150330-52275"
+   ],
+   "severities": {
+    "high": 3,
+    "medium": 5,
+    "low": 0
+   },
+   "tokens": 6800,
+   "prompt_tokens": 4698,
+   "completion_tokens": 2102,
+   "cost_usd": 0.0,
+   "seconds": 634.6,
+   "llm_calls": 3,
+   "fallbacks": 0,
+   "models": [
+    "ollama:qwen2.5:7b"
+   ],
+   "scope_request": false,
+   "capped": 0,
+   "merged_notes": [],
+   "call_log": [
+    {
+     "kind": "plan",
+     "model": "ollama:qwen2.5:7b",
+     "prompt_tokens": 967,
+     "completion_tokens": 302,
+     "seconds": 112.16
+    },
+    {
+     "kind": "synth",
+     "model": "ollama:qwen2.5:7b",
+     "prompt_tokens": 1795,
+     "completion_tokens": 900,
+     "seconds": 291.57
+    },
+    {
+     "kind": "synth",
+     "model": "ollama:qwen2.5:7b",
+     "prompt_tokens": 1936,
+     "completion_tokens": 900,
+     "seconds": 208.59
+    }
+   ],
+   "malformed_attempts": 1,
+   "model_attempts": 4,
+   "plan_steps_rejected": 0,
+   "plan_steps_proposed": 3,
+   "choice_fallbacks": 0
+  },
+  {
+   "query": "Q2",
+   "run_id": "run_20261115_163856_6919",
+   "mode": "full",
+   "ok": true,
+   "plan_tools": [
+    "search_awards",
+    "detect_noncompetitive_method",
+    "supplier_concentration"
+   ],
+   "tool_calls": 7,
+   "n_flags": 1,
+   "flagged": [
+    "buyer:Kenya Rural Roads Authority|detect_noncompetitive_method"
+   ],
+   "severities": {
+    "high": 0,
+    "medium": 1,
+    "low": 0
+   },
+   "tokens": 2306,
+   "prompt_tokens": 1758,
+   "completion_tokens": 548,
+   "cost_usd": 0.0,
+   "seconds": 217.8,
+   "llm_calls": 2,
+   "fallbacks": 0,
+   "models": [
+    "ollama:qwen2.5:7b"
+   ],
+   "scope_request": false,
+   "capped": 0,
+   "merged_notes": [],
+   "call_log": [
+    {
+     "kind": "plan",
+     "model": "ollama:qwen2.5:7b",
+     "prompt_tokens": 964,
+     "completion_tokens": 228,
+     "seconds": 95.32
+    },
+    {
+     "kind": "synth",
+     "model": "ollama:qwen2.5:7b",
+     "prompt_tokens": 794,
+     "completion_tokens": 320,
+     "seconds": 97.42
+    }
+   ],
+   "malformed_attempts": 0,
+   "model_attempts": 2,
+   "plan_steps_rejected": 0,
+   "plan_steps_proposed": 3,
+   "choice_fallbacks": 0
+  },
+  {
+   "query": "Q1",
+   "run_id": "run_20261115_164235_ca83",
+   "mode": "full",
+   "ok": true,
+   "plan_tools": [
+    "search_awards",
+    "detect_splitting",
+    "detect_price_anomalies"
+   ],
+   "tool_calls": 16,
+   "n_flags": 8,
+   "flagged": [
+    "ocds-5whusi-043/2022/2023|20250205150331-52488",
+    "ocds-5whusi-1166469-3|20250205150330-52920",
+    "ocds-5whusi-1177969|20250205150309-43082",
+    "ocds-5whusi-1212735|20250205150330-52396",
+    "ocds-5whusi-1222048|20250205150330-52301",
+    "ocds-5whusi-1223916-2022/2023|20250205150317-42727",
+    "ocds-5whusi-1294861-2022/2023|20250205150323-50936",
+    "ocds-5whusi-239923-2022/2023|20250205150329-51767",
+    "ocds-5whusi-307A(1)/2022/2023|20250205150331-52493",
+    "ocds-5whusi-42686|20250205150132-43031",
+    "ocds-5whusi-GMC/GVN/Q/022/2022/2023|20250205150330-52114",
+    "ocds-5whusi-GMC/H/Q/86/1310033/2022-2023|20250205150328-51139",
+    "ocds-5whusi-GMC/K/D/056/2023/2024|20240703171733-91111",
+    "ocds-5whusi-GMC/K/Q/080/2023/2024|20240213144738-72478",
+    "ocds-5whusi-GMC/K/Q/151/2023/2024|20240206125130-71738",
+    "ocds-5whusi-GMC/W/Q/139/2022/2023|20250205150330-52275"
+   ],
+   "severities": {
+    "high": 3,
+    "medium": 5,
+    "low": 0
+   },
+   "tokens": 6552,
+   "prompt_tokens": 4706,
+   "completion_tokens": 1846,
+   "cost_usd": 0.0,
+   "seconds": 488.5,
+   "llm_calls": 3,
+   "fallbacks": 0,
+   "models": [
+    "ollama:qwen2.5:7b"
+   ],
+   "scope_request": false,
+   "capped": 0,
+   "merged_notes": [],
+   "call_log": [
+    {
+     "kind": "plan",
+     "model": "ollama:qwen2.5:7b",
+     "prompt_tokens": 967,
+     "completion_tokens": 302,
+     "seconds": 52.36
+    },
+    {
+     "kind": "synth",
+     "model": "ollama:qwen2.5:7b",
+     "prompt_tokens": 1799,
+     "completion_tokens": 900,
+     "seconds": 275.78
+    },
+    {
+     "kind": "synth",
+     "model": "ollama:qwen2.5:7b",
+     "prompt_tokens": 1940,
+     "completion_tokens": 644,
+     "seconds": 137.22
+    }
+   ],
+   "malformed_attempts": 1,
+   "model_attempts": 4,
+   "plan_steps_rejected": 0,
+   "plan_steps_proposed": 3,
+   "choice_fallbacks": 0
+  },
+  {
+   "query": "Q2",
+   "run_id": "run_20261115_165044_8e4b",
+   "mode": "full",
+   "ok": true,
+   "plan_tools": [
+    "search_awards",
+    "detect_noncompetitive_method",
+    "supplier_concentration"
+   ],
+   "tool_calls": 7,
+   "n_flags": 1,
+   "flagged": [
+    "buyer:Kenya Rural Roads Authority|detect_noncompetitive_method"
+   ],
+   "severities": {
+    "high": 0,
+    "medium": 1,
+    "low": 0
+   },
+   "tokens": 2306,
+   "prompt_tokens": 1766,
+   "completion_tokens": 540,
+   "cost_usd": 0.0,
+   "seconds": 152.3,
+   "llm_calls": 2,
+   "fallbacks": 0,
+   "models": [
+    "ollama:qwen2.5:7b"
+   ],
+   "scope_request": false,
+   "capped": 0,
+   "merged_notes": [],
+   "call_log": [
+    {
+     "kind": "plan",
+     "model": "ollama:qwen2.5:7b",
+     "prompt_tokens": 964,
+     "completion_tokens": 228,
+     "seconds": 40.76
+    },
+    {
+     "kind": "synth",
+     "model": "ollama:qwen2.5:7b",
+     "prompt_tokens": 802,
+     "completion_tokens": 312,
+     "seconds": 91.03
+    }
+   ],
+   "malformed_attempts": 0,
+   "model_attempts": 2,
+   "plan_steps_rejected": 0,
+   "plan_steps_proposed": 3,
+   "choice_fallbacks": 0
+  },
+  {
+   "query": "Q1",
+   "run_id": "run_20261115_165317_fffe",
+   "mode": "full",
+   "ok": true,
+   "plan_tools": [
+    "search_awards",
+    "detect_splitting",
+    "detect_price_anomalies"
+   ],
+   "tool_calls": 16,
+   "n_flags": 8,
+   "flagged": [
+    "ocds-5whusi-043/2022/2023|20250205150331-52488",
+    "ocds-5whusi-1166469-3|20250205150330-52920",
+    "ocds-5whusi-1177969|20250205150309-43082",
+    "ocds-5whusi-1212735|20250205150330-52396",
+    "ocds-5whusi-1222048|20250205150330-52301",
+    "ocds-5whusi-1223916-2022/2023|20250205150317-42727",
+    "ocds-5whusi-1294861-2022/2023|20250205150323-50936",
+    "ocds-5whusi-239923-2022/2023|20250205150329-51767",
+    "ocds-5whusi-307A(1)/2022/2023|20250205150331-52493",
+    "ocds-5whusi-42686|20250205150132-43031",
+    "ocds-5whusi-GMC/GVN/Q/022/2022/2023|20250205150330-52114",
+    "ocds-5whusi-GMC/H/Q/86/1310033/2022-2023|20250205150328-51139",
+    "ocds-5whusi-GMC/K/D/056/2023/2024|20240703171733-91111",
+    "ocds-5whusi-GMC/K/Q/080/2023/2024|20240213144738-72478",
+    "ocds-5whusi-GMC/K/Q/151/2023/2024|20240206125130-71738",
+    "ocds-5whusi-GMC/W/Q/139/2022/2023|20250205150330-52275"
+   ],
+   "severities": {
+    "high": 3,
+    "medium": 5,
+    "low": 0
+   },
+   "tokens": 3788,
+   "prompt_tokens": 2762,
+   "completion_tokens": 1026,
+   "cost_usd": 0.0,
+   "seconds": 325.6,
+   "llm_calls": 2,
+   "fallbacks": 0,
+   "models": [
+    "ollama:qwen2.5:7b"
+   ],
+   "scope_request": false,
+   "capped": 0,
+   "merged_notes": [],
+   "call_log": [
+    {
+     "kind": "plan",
+     "model": "ollama:qwen2.5:7b",
+     "prompt_tokens": 967,
+     "completion_tokens": 302,
+     "seconds": 50.91
+    },
+    {
+     "kind": "synth",
+     "model": "ollama:qwen2.5:7b",
+     "prompt_tokens": 1795,
+     "completion_tokens": 724,
+     "seconds": 255.1
+    }
+   ],
+   "malformed_attempts": 0,
+   "model_attempts": 2,
+   "plan_steps_rejected": 0,
+   "plan_steps_proposed": 3,
+   "choice_fallbacks": 0
+  },
+  {
+   "query": "Q2",
+   "run_id": "run_20261115_165843_6788",
+   "mode": "full",
+   "ok": true,
+   "plan_tools": [
+    "search_awards",
+    "detect_noncompetitive_method",
+    "supplier_concentration"
+   ],
+   "tool_calls": 7,
+   "n_flags": 1,
+   "flagged": [
+    "buyer:Kenya Rural Roads Authority|detect_noncompetitive_method"
+   ],
+   "severities": {
+    "high": 0,
+    "medium": 1,
+    "low": 0
+   },
+   "tokens": 2308,
+   "prompt_tokens": 1766,
+   "completion_tokens": 542,
+   "cost_usd": 0.0,
+   "seconds": 145.1,
+   "llm_calls": 2,
+   "fallbacks": 0,
+   "models": [
+    "ollama:qwen2.5:7b"
+   ],
+   "scope_request": false,
+   "capped": 0,
+   "merged_notes": [],
+   "call_log": [
+    {
+     "kind": "plan",
+     "model": "ollama:qwen2.5:7b",
+     "prompt_tokens": 964,
+     "completion_tokens": 228,
+     "seconds": 39.43
+    },
+    {
+     "kind": "synth",
+     "model": "ollama:qwen2.5:7b",
+     "prompt_tokens": 802,
+     "completion_tokens": 314,
+     "seconds": 91.95
+    }
+   ],
+   "malformed_attempts": 0,
+   "model_attempts": 2,
+   "plan_steps_rejected": 0,
+   "plan_steps_proposed": 3,
+   "choice_fallbacks": 0
+  }
+ ],
+ "summary": {
+  "Q1": {
+   "runs": 3,
+   "failed": 0,
+   "plan_identical_share": 1.0,
+   "distinct_plans": 1,
+   "modal_plan": [
+    "detect_price_anomalies",
+    "detect_splitting",
+    "search_awards"
+   ],
+   "flagged_overlap_jaccard_mean": 1.0,
+   "flags": [
+    8,
+    8,
+    8
+   ],
+   "tokens": [
+    3788,
+    6552,
+    6800
+   ],
+   "seconds": [
+    325.6,
+    488.5,
+    634.6
+   ],
+   "cost_usd": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "tool_calls": [
+    16,
+    16,
+    16
+   ],
+   "fallbacks": 0
+  },
+  "Q2": {
+   "runs": 3,
+   "failed": 0,
+   "plan_identical_share": 1.0,
+   "distinct_plans": 1,
+   "modal_plan": [
+    "detect_noncompetitive_method",
+    "search_awards",
+    "supplier_concentration"
+   ],
+   "flagged_overlap_jaccard_mean": 1.0,
+   "flags": [
+    1,
+    1,
+    1
+   ],
+   "tokens": [
+    2306,
+    2306,
+    2308
+   ],
+   "seconds": [
+    145.1,
+    152.3,
+    217.8
+   ],
+   "cost_usd": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "tool_calls": [
+    7,
+    7,
+    7
+   ],
+   "fallbacks": 0
+  }
+ }
+}
