@@ -25,6 +25,7 @@ from app import bootstrap, cards, engine  # noqa: E402
 from app.examples import EXAMPLES  # noqa: E402
 from app.memo_pdf import memo_to_pdf  # noqa: E402
 from agent.settings import SettingsError, load_settings  # noqa: E402
+from mcp_server.fmt import md_safe  # noqa: E402
 from mcp_server.records import release_record  # noqa: E402
 from mcp_server.rules import load_rules  # noqa: E402
 
@@ -369,7 +370,7 @@ def main() -> None:
     if job is not None and view is not None:
         with st.expander("What the agent did", expanded=False):
             lines = [engine.summarise_event(k, r) for k, r in list(job.events)]
-            st.markdown("\n".join(f"- {x}" for x in lines if x) or "(nothing logged)")
+            st.markdown("\n".join(f"- {md_safe(x)}" for x in lines if x) or "(nothing logged)")
     if view is None:
         return
     if "error" in view:
@@ -384,7 +385,7 @@ def main() -> None:
         st.info(state["scope_request"])
         return
     st.subheader("Summary")
-    st.write(state.get("summary") or "")
+    st.write(md_safe(state.get("summary") or ""))
     for reason in state.get("stop_reasons", []):
         st.caption(f"The run stopped early: {reason}")
     for rec in st.session_state.fallbacks:

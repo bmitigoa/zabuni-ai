@@ -53,6 +53,12 @@ class PlanStep(_ArgsAsJson):
     reason: str = Field(description="One sentence: why this check, why now")
 
 
+class ToolChoice(BaseModel):
+    """First planning step (progressive disclosure): which tools from the index the investigation needs."""
+    tools: list[str] = Field(description="Exact tool names from the index that this request needs, broad checks first")
+    scope: Scope = Field(default_factory=Scope, description="The buyer, supplier and years found in the request (null when absent)")
+
+
 class Plan(BaseModel):
     objective: str = Field(description="One sentence restating what is being investigated")
     scope: Scope

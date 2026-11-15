@@ -17,10 +17,11 @@ from langgraph.types import interrupt
 from agent import policy
 from agent.audit import AuditLog
 from agent.budget import Budget
-from agent.discovery import ToolInfo, catalogue, compact_schema, planning_tools, tool_with_role
+from agent.discovery import ToolInfo, catalogue, compact_schema, planning_tools, tool_index, tool_with_role
 from agent.llm import LLMError, LLMQuotaError
 from agent.mcp_client import McpBackend, ToolCallFailed
-from agent.state import AgentState, ArgsFix, ClarifyAnswer, ClarifyPlan, Plan, SynthOutput
+from agent.state import AgentState, ArgsFix, ClarifyAnswer, ClarifyPlan, Plan, SynthOutput, ToolChoice
+from agent.untrusted import UntrustedGate, reads_like_instruction
 
 PLANNER_SYSTEM = """You plan an investigation of Kenyan public-procurement awards (OCDS data) for value-for-money and integrity risks. You never recommend or award anything; humans decide.
 Use ONLY the tools listed. Each step: one tool, its arguments as a JSON string, and a reason of at most 12 words. Use only arguments the tool lists.
@@ -29,6 +30,10 @@ Use ONLY the tools listed. Each step: one tool, its arguments as a JSON string, 
 - 3 to 6 steps, broad checks first.
 - Return scope: the buyer and years found in the request (null if absent).
 Example: for "Review Acme Ltd 2021-2022" every step gets "buyer": "Acme Ltd" and "years": [2021, 2022] (or date_from/date_to)."""
+
+CHOOSE_SYSTEM = """You pick the tools for an investigation of Kenyan public-procurement awards (OCDS data). You never recommend or award anything.
+From the index choose the 3 to 6 tools that fit the request, broad checks first. Use exact tool names from the index only.
+Also return the scope: the buyer, supplier and years found in the request (null if absent). Never invent them."""
 
 FIX_SYSTEM = """A tool call failed. Return corrected arguments for the SAME tool as a JSON string in args_json, or give_up=true.
 Change as little as possible. Use only values from the error message, the candidates, the schema or the original arguments; never invent a value."""
@@ -52,9 +57,11 @@ class AgentContext:
     calls: int = 0                                          # tool calls made (step cap); restored from the checkpoint on resume
     token_base: int = 0                                     # tokens this run already used in earlier sessions (from the ledger)
     by_name: dict[str, ToolInfo] = field(init=False)
+    gate: UntrustedGate = field(init=False)                  # cleans and delimits data before any model sees it
 
     def __post_init__(self) -> None:
         self.by_name = {t.name: t for t in self.tools}
+        self.gate = UntrustedGate(self.rules["untrusted"], self.audit)
 
     @property
     def cfg(self) -> dict[str, Any]:
@@ -87,6 +94,17 @@ class AgentContext:
         return await self.backend.call(info.server, info.name, args, step={"reason": why})
 
 
+def _screen_draft(ctx: AgentContext, draft: dict[str, Any]) -> dict[str, Any]:
+    """Output check on one model-written finding: an explanation that repeats instruction-like text (or the withheld marker) is
+    emptied, so the citation guard falls back to the tool's own wording for that candidate."""
+    echoed = reads_like_instruction(draft.get("explanation") or "", ctx.gate)
+    if echoed:
+        ctx.audit.event("output_guard", where="finding", reason="explanation repeats instruction-like text", matched=echoed,
+                        candidate_id=draft.get("candidate_id"))
+        return {**draft, "explanation": ""}
+    return draft
+
+
 def _stop(state: AgentState, reason: str) -> list[str]:
     reasons = list(state.get("stop_reasons") or [])
     if reason not in reasons:
@@ -95,9 +113,62 @@ def _stop(state: AgentState, reason: str) -> list[str]:
 
 
 # ----------------------------------------------------------------------------- Planner
+async def _choose_tools(ctx: AgentContext, query: str, tools: list[ToolInfo]) -> tuple[list[ToolInfo], dict[str, Any] | None]:
+    """Progressive disclosure, step 1: the model sees a compact INDEX (one line per tool) and names the tools it needs.
+    Only those tools' full argument lists go into the planning prompt. An unusable answer (an LLM error, no valid name)
+    falls back to the full catalogue, so this can make the prompt smaller but never make planning fail. The same call returns the
+    scope it found in the request, so a request with none is stopped by the scope guard after ONE model call, as before.
+    Returns (tools to disclose, the model's scope or None when the step failed)."""
+    index = tool_index(tools, int(ctx.cfg["index_brief_chars"]))
+    try:
+        pick = await ctx.llm.structured(ToolChoice, CHOOSE_SYSTEM, f"Request: {query}\n\nTool index:\n{index}", kind="tool_choice")
+    except LLMQuotaError:
+        raise
+    except LLMError as exc:
+        ctx.audit.event("tools_choice_fallback", reason=str(exc)[:200])
+        return tools, None
+    wanted = set(pick.tools)
+    chosen = [t for t in tools if t.name in wanted][: int(ctx.cfg["max_chosen_tools"])]
+    unknown = sorted(wanted - {t.name for t in tools})
+    if unknown:
+        ctx.audit.event("tools_choice_rejected", tools=unknown, valid_tools=[t.name for t in tools])
+    if not chosen:
+        ctx.audit.event("tools_choice_fallback", reason="no valid tool name in the choice")
+        return tools, pick.scope.model_dump()
+    ctx.audit.event("tools_chosen", chosen=[t.name for t in chosen], offered=len(tools))
+    return chosen, pick.scope.model_dump()
+
+
+def progressive_enabled(setting: Any, model_name: str) -> bool:
+    """Is progressive disclosure on for this model? `setting` is a bool, or a table keyed by provider (the part of the model name
+    before ':', e.g. 'ollama' in 'ollama:qwen2.5:7b') with a 'default' entry for any other provider (such as a test double)."""
+    if isinstance(setting, dict):
+        provider = str(model_name).partition(":")[0]
+        return bool(setting.get(provider, setting.get("default", True)))
+    return bool(setting)
+
+
+def _scope_request(ctx: AgentContext, state: AgentState, objective: str, scope: dict[str, Any]) -> dict[str, Any]:
+    """The scope guard's answer: ask the reviewer for a buyer, supplier or period instead of scanning all of Kenya (no tool runs)."""
+    message = ctx.cfg["scope_request_message"]
+    ctx.audit.event("scope_request", query=state["query"], message=message)
+    return {"plan": {"objective": objective, "steps": []}, "scope": scope, "queue": [], "scope_request": message,
+            "steps_done": 0, "results": [], "notes": [], "stopped_reason": None, "stop_reasons": [], "decisions": [],
+            "suppressed": [], "clarifications": [], "flags_created": [], "capped": [],
+            "summary": message, "review_status": "needs_scope"}
+
+
 async def planner(state: AgentState, ctx: AgentContext) -> dict[str, Any]:
     """Ask the LLM for a structured plan built from the *discovered* tool catalogue; validate it; queue the steps."""
     tools = ctx.plannable
+    if progressive_enabled(ctx.cfg.get("progressive_disclosure"), getattr(ctx.llm, "name", "")):
+        tools, early_scope = await _choose_tools(ctx, state["query"], tools)       # full schemas are disclosed for the chosen tools only
+        if early_scope is not None:
+            grounded_early, removed_early = policy.ground_scope(early_scope, state["query"])
+            if removed_early:                                              # the model invented part of the scope: drop what the request does not say
+                ctx.audit.event("scope_ungrounded", removed=removed_early, model_scope=early_scope, query=state["query"])
+            if not policy.has_scope(policy.merge_scope(grounded_early, state.get("scope_hint"))):      # scope guard before the second model call
+                return _scope_request(ctx, state, "", policy.merge_scope(grounded_early, state.get("scope_hint")))
     names = {t.name for t in tools}
     user = f"Request: {state['query']}\n\nTools:\n{catalogue(tools, int(ctx.cfg['catalogue_brief_chars']))}"
     steps: list[dict[str, Any]] = []
@@ -123,12 +194,7 @@ async def planner(state: AgentState, ctx: AgentContext) -> dict[str, Any]:
         ctx.audit.event("scope_ungrounded", removed=removed, model_scope=plan.scope.model_dump(), query=state["query"])
     scope = policy.merge_scope(grounded, state.get("scope_hint"))
     if not policy.has_scope(scope):                        # scope guard: ask instead of scanning all of Kenya
-        message = ctx.cfg["scope_request_message"]
-        ctx.audit.event("scope_request", query=state["query"], message=message)
-        return {"plan": {"objective": plan.objective, "steps": []}, "scope": scope, "queue": [], "scope_request": message,
-                "steps_done": 0, "results": [], "notes": [], "stopped_reason": None, "stop_reasons": [], "decisions": [],
-                "suppressed": [], "clarifications": [], "flags_created": [], "capped": [],
-                "summary": message, "review_status": "needs_scope"}
+        return _scope_request(ctx, state, plan.objective, scope)
     for s in steps:
         schema = ctx.by_name[s["tool"]].input_schema
         s["args"], dropped = policy.prune_unknown_args(s["args"], schema)          # a small model may invent an argument
@@ -151,7 +217,7 @@ def route_after_planner(state: AgentState) -> str:
 
 # ----------------------------------------------------------------------------- Investigator
 async def _attempt(ctx: AgentContext, step: dict[str, Any], args: dict[str, Any], notes: list[str], *,
-                   enforce_cap: bool = True) -> tuple[Any, str | None, dict[str, Any], int]:
+                   enforce_cap: bool = True, scope: dict[str, Any] | None = None) -> tuple[Any, str | None, dict[str, Any], int]:
     """Run one call. Arguments the tool does not declare are dropped (logged). On a schema problem, transport failure or
     tool-reported error the LLM is asked ONCE (agent.max_corrections) for corrected arguments and the call is retried.
     Returns (output, error, final_args, corrections)."""
@@ -180,15 +246,21 @@ async def _attempt(ctx: AgentContext, step: dict[str, Any], args: dict[str, Any]
         if corrections >= int(ctx.cfg["max_corrections"]) or ctx.budget.stop_reason():
             return output, err, args, corrections
         candidates = (output or {}).get("result", {}).get("candidates") if isinstance(output, dict) else None
+        failure = {"failed_with": args, "error": err, **({"candidate_names": candidates} if candidates else {})}
         user = (f"Tool: {tool.name}\nArguments: {compact_schema(tool.input_schema)}\n"
-                f"Failed with: {json.dumps(args, default=str)}\nError: {err}\n"
-                + (f"Candidate names offered by the tool: {candidates}\n" if candidates else ""))
+                f"Failure details:\n{ctx.gate.block('tool_failure', failure)}")
         try:
-            fix = await ctx.llm.structured(ArgsFix, FIX_SYSTEM, user, kind="fix")
+            fix = await ctx.llm.structured(ArgsFix, ctx.gate.with_rule(FIX_SYSTEM), user, kind="fix")
         except LLMError as exc:
             notes.append(f"{tool.name}: could not correct arguments ({exc})")
             return output, err, args, corrections
         corrections += 1
+        redirected = policy.fix_violations(args, fix.args, scope or {}, candidates or [], ctx.cfg["fix_entity_args"])
+        if redirected:                                         # a correction may repair a value, never point the call at another entity
+            ctx.audit.event("correction_rejected", tool=tool.name, old_args=args, new_args=fix.args, redirected=redirected)
+            notes.append(f"{tool.name}: a corrected argument was refused because it named an entity that is neither in the request "
+                         f"nor offered by the tool ({', '.join(redirected)}).")
+            return output, err, args, corrections
         ctx.audit.event("correction", tool=tool.name, error=err, old_args=args, new_args=fix.args,
                         give_up=fix.give_up, explanation=fix.explanation)
         if fix.give_up or not fix.args:
@@ -217,7 +289,7 @@ async def investigator(state: AgentState, ctx: AgentContext) -> dict[str, Any]:
         return {"queue": [], "notes": notes, "steps_done": ctx.calls, "stopped_reason": token_stop,
                 "stop_reasons": _stop(state, token_stop)}
     step = queue.pop(0)
-    output, err, args, corrections = await _attempt(ctx, step, dict(step["args"]), notes)
+    output, err, args, corrections = await _attempt(ctx, step, dict(step["args"]), notes, scope=state.get("scope"))
     recoveries: list[dict[str, Any]] = []
     while err is None and policy.needs_widening(output) and len(recoveries) < int(ctx.cfg["max_recoveries_per_step"]):
         nxt = policy.next_widening(args, output["result"]["widen_options"])
@@ -225,7 +297,7 @@ async def investigator(state: AgentState, ctx: AgentContext) -> dict[str, Any]:
             break
         new_args, op = nxt
         before = output["result"]["cohort"]["n"]
-        out2, err2, args2, c2 = await _attempt(ctx, step, new_args, notes)
+        out2, err2, args2, c2 = await _attempt(ctx, step, new_args, notes, scope=state.get("scope"))
         corrections += c2
         if err2 is not None or out2 is None:
             notes.append(f"{step['tool']}: widening ({op}) failed: {err2}")
@@ -292,14 +364,17 @@ async def synthesiser(state: AgentState, ctx: AgentContext) -> dict[str, Any]:
             shown = order[: int(ctx.cfg["synth_max_candidates"])]
             listing = [{"id": c["id"], "tool": c["tool"], "summary": c["summary"], "severity_hint": c["severity_hint"],
                         "ocids": c["ocids"][:4]} for c in shown]
-            user = (f"Candidate flags:\n{json.dumps(listing, separators=(',', ':'))}\n\nNotes:\n"
-                    + "\n".join(f"- {n[:160]}" for n in state.get("notes", [])[-8:]) + f"\nStopped early: {state.get('stopped_reason')}")
+            user = (f"Candidate flags:\n{ctx.gate.block('candidate_flags', listing)}\n\nNotes:\n"
+                    + ctx.gate.block("run_notes", [n[:160] for n in state.get("notes", [])[-8:]]) + f"\nStopped early: {state.get('stopped_reason')}")
             try:
-                out = await ctx.llm.structured(SynthOutput, SYNTH_SYSTEM.replace("{severities}", ", ".join(fl["severities"])),
+                out = await ctx.llm.structured(SynthOutput, ctx.gate.with_rule(SYNTH_SYSTEM.replace("{severities}", ", ".join(fl["severities"]))),
                                                user, kind="synth")
-                drafts = [f.model_dump() for f in out.findings]
+                drafts = [_screen_draft(ctx, f.model_dump()) for f in out.findings]
+                echoed = reads_like_instruction(out.summary, ctx.gate)
                 if policy.ocids_in(out.summary) - {e["ocid"] for e in pool}:
                     ctx.audit.event("citation_guard", where="summary", reason="summary mentions an ocid not in tool evidence")
+                elif echoed:
+                    ctx.audit.event("output_guard", where="summary", reason="summary repeats instruction-like text", matched=echoed)
                 else:
                     summary = out.summary
             except LLMError as exc:
@@ -448,10 +523,10 @@ async def _clarify_one(ctx: AgentContext, state: AgentState, flag: dict[str, Any
     try:
         if stop:
             raise LLMError(f"run budget: {stop}")
-        user = (f"Flag: {flag['rule']} - {flag['explanation'][:300]}\nCited ocids: {flag['ocids'][:5]}\n"
-                f"Scope: buyer={scope.get('buyer')} years={scope.get('years')}\nQuestion: {question}\n\n"
+        user = (f"Flag:\n{ctx.gate.block('flag', {'rule': flag['rule'], 'explanation': flag['explanation'][:300], 'ocids': flag['ocids'][:5]})}\n"
+                f"Scope: buyer={scope.get('buyer')} years={scope.get('years')}\nReviewer's question: {question}\n\n"
                 f"Tools:\n{catalogue(ctx.plannable, int(ctx.cfg['catalogue_brief_chars']))}")
-        plan = await ctx.llm.structured(ClarifyPlan, CLARIFY_PLAN_SYSTEM.format(n=rv["clarify_max_steps"]), user, kind="clarify_plan")
+        plan = await ctx.llm.structured(ClarifyPlan, ctx.gate.with_rule(CLARIFY_PLAN_SYSTEM.format(n=rv["clarify_max_steps"])), user, kind="clarify_plan")
         for s in plan.steps[: int(rv["clarify_max_steps"])]:
             if s.tool in names:
                 schema = ctx.by_name[s.tool].input_schema
@@ -462,7 +537,7 @@ async def _clarify_one(ctx: AgentContext, state: AgentState, flag: dict[str, Any
             if int(getattr(ctx.llm, "tokens", 0)) - tokens_at_start >= cap:
                 notes.append(f"Clarification of {flag['flag_id']} stopped: token limit for one round reached.")
                 break
-            output, err, args, _ = await _attempt(ctx, step, step["args"], notes, enforce_cap=False)
+            output, err, args, _ = await _attempt(ctx, step, step["args"], notes, enforce_cap=False, scope=scope)
             if err is None and output is not None:
                 results.append({"tool": step["tool"], "args": args, "output": output})
                 new_evidence += [{k: e[k] for k in ("ocid", "award_id", "field", "value")} for e in output.get("evidence", [])]
@@ -471,11 +546,14 @@ async def _clarify_one(ctx: AgentContext, state: AgentState, flag: dict[str, Any
         new_evidence = new_evidence[: int(rv["interrupt_evidence_shown"]) * 2]
         if results:
             compact = [{"tool": r["tool"], **policy.compact_result(r["output"])} for r in results]
-            reply = await ctx.llm.structured(ClarifyAnswer, CLARIFY_ANSWER_SYSTEM,
-                                             f"Question: {question}\nResults:\n{json.dumps(compact, separators=(',', ':'))}", kind="clarify_answer")
+            reply = await ctx.llm.structured(ClarifyAnswer, ctx.gate.with_rule(CLARIFY_ANSWER_SYSTEM),
+                                             f"Question: {question}\nResults:\n{ctx.gate.block('tool_results', compact)}", kind="clarify_answer")
             allowed = {e["ocid"] for e in new_evidence} | set(flag["ocids"])
+            echoed = reads_like_instruction(reply.response, ctx.gate)
             if policy.ocids_in(reply.response) - allowed:
                 ctx.audit.event("citation_guard", where="clarification", reason="answer mentions an ocid not in tool evidence")
+            elif echoed:
+                ctx.audit.event("output_guard", where="clarification", reason="answer repeats instruction-like text", matched=echoed)
             else:
                 answer_text = reply.response.strip()
     except LLMError as exc:

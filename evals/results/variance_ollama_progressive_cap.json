@@ -1,0 +1,221 @@
+{
+ "provider": "ollama",
+ "model": "qwen2.5:7b",
+ "mode": "progressive",
+ "runs": [
+  {
+   "query": "Q1",
+   "run_id": "run_20261115_185447_8de7",
+   "mode": "progressive",
+   "ok": true,
+   "plan_tools": [
+    "search_awards",
+    "detect_splitting",
+    "detect_price_anomalies"
+   ],
+   "tool_calls": 15,
+   "n_flags": 7,
+   "flagged": [
+    "ocds-5whusi-043/2022/2023|20250205150331-52488",
+    "ocds-5whusi-1166469-3|20250205150330-52920",
+    "ocds-5whusi-1177969|20250205150309-43082",
+    "ocds-5whusi-1212735|20250205150330-52396",
+    "ocds-5whusi-1222048|20250205150330-52301",
+    "ocds-5whusi-1223916-2022/2023|20250205150317-42727",
+    "ocds-5whusi-1294861-2022/2023|20250205150323-50936",
+    "ocds-5whusi-239923-2022/2023|20250205150329-51767",
+    "ocds-5whusi-307A(1)/2022/2023|20250205150331-52493",
+    "ocds-5whusi-GMC/GVN/Q/022/2022/2023|20250205150330-52114",
+    "ocds-5whusi-GMC/H/Q/86/1310033/2022-2023|20250205150328-51139",
+    "ocds-5whusi-GMC/K/D/056/2023/2024|20240703171733-91111",
+    "ocds-5whusi-GMC/K/Q/080/2023/2024|20240213144738-72478",
+    "ocds-5whusi-GMC/K/Q/151/2023/2024|20240206125130-71738",
+    "ocds-5whusi-GMC/W/Q/139/2022/2023|20250205150330-52275"
+   ],
+   "severities": {
+    "high": 2,
+    "medium": 5,
+    "low": 0
+   },
+   "tokens": 3700,
+   "prompt_tokens": 2549,
+   "completion_tokens": 1151,
+   "cost_usd": 0.0,
+   "seconds": 382.4,
+   "llm_calls": 3,
+   "fallbacks": 0,
+   "models": [
+    "ollama:qwen2.5:7b"
+   ],
+   "scope_request": false,
+   "capped": 0,
+   "merged_notes": [],
+   "call_log": [
+    {
+     "kind": "tool_choice",
+     "model": "ollama:qwen2.5:7b",
+     "prompt_tokens": 258,
+     "completion_tokens": 55,
+     "seconds": 30.59
+    },
+    {
+     "kind": "plan",
+     "model": "ollama:qwen2.5:7b",
+     "prompt_tokens": 665,
+     "completion_tokens": 308,
+     "seconds": 75.47
+    },
+    {
+     "kind": "synth",
+     "model": "ollama:qwen2.5:7b",
+     "prompt_tokens": 1626,
+     "completion_tokens": 788,
+     "seconds": 226.45
+    }
+   ],
+   "malformed_attempts": 0,
+   "model_attempts": 3,
+   "plan_steps_rejected": 0,
+   "plan_steps_proposed": 3,
+   "choice_fallbacks": 0
+  },
+  {
+   "query": "Q2",
+   "run_id": "run_20261115_190114_c0d9",
+   "mode": "progressive",
+   "ok": true,
+   "plan_tools": [
+    "detect_noncompetitive_method",
+    "supplier_concentration"
+   ],
+   "tool_calls": 3,
+   "n_flags": 1,
+   "flagged": [
+    "buyer:Kenya Rural Roads Authority|detect_noncompetitive_method"
+   ],
+   "severities": {
+    "high": 0,
+    "medium": 1,
+    "low": 0
+   },
+   "tokens": 1725,
+   "prompt_tokens": 1236,
+   "completion_tokens": 489,
+   "cost_usd": 0.0,
+   "seconds": 181.0,
+   "llm_calls": 3,
+   "fallbacks": 0,
+   "models": [
+    "ollama:qwen2.5:7b"
+   ],
+   "scope_request": false,
+   "capped": 0,
+   "merged_notes": [],
+   "call_log": [
+    {
+     "kind": "tool_choice",
+     "model": "ollama:qwen2.5:7b",
+     "prompt_tokens": 255,
+     "completion_tokens": 47,
+     "seconds": 27.81
+    },
+    {
+     "kind": "plan",
+     "model": "ollama:qwen2.5:7b",
+     "prompt_tokens": 445,
+     "completion_tokens": 130,
+     "seconds": 38.66
+    },
+    {
+     "kind": "synth",
+     "model": "ollama:qwen2.5:7b",
+     "prompt_tokens": 536,
+     "completion_tokens": 312,
+     "seconds": 73.42
+    }
+   ],
+   "malformed_attempts": 0,
+   "model_attempts": 3,
+   "plan_steps_rejected": 0,
+   "plan_steps_proposed": 2,
+   "choice_fallbacks": 0
+  }
+ ],
+ "summary": {
+  "Q1": {
+   "runs": 1,
+   "failed": 0,
+   "plan_identical_share": 1.0,
+   "distinct_plans": 1,
+   "modal_plan": [
+    "detect_price_anomalies",
+    "detect_splitting",
+    "search_awards"
+   ],
+   "flagged_overlap_jaccard_mean": null,
+   "flags": [
+    7,
+    7,
+    7
+   ],
+   "tokens": [
+    3700,
+    3700,
+    3700
+   ],
+   "seconds": [
+    382.4,
+    382.4,
+    382.4
+   ],
+   "cost_usd": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "tool_calls": [
+    15,
+    15,
+    15
+   ],
+   "fallbacks": 0
+  },
+  "Q2": {
+   "runs": 1,
+   "failed": 0,
+   "plan_identical_share": 1.0,
+   "distinct_plans": 1,
+   "modal_plan": [
+    "detect_noncompetitive_method",
+    "supplier_concentration"
+   ],
+   "flagged_overlap_jaccard_mean": null,
+   "flags": [
+    1,
+    1,
+    1
+   ],
+   "tokens": [
+    1725,
+    1725,
+    1725
+   ],
+   "seconds": [
+    181.0,
+    181.0,
+    181.0
+   ],
+   "cost_usd": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "tool_calls": [
+    3,
+    3,
+    3
+   ],
+   "fallbacks": 0
+  }
+ }
+}

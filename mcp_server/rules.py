@@ -40,6 +40,16 @@ DEFAULT_RULES: dict[str, Any] = {
         "candidates_shown": 10,               # buyer names listed when a name is ambiguous
         "fuzzy_matches": 5,                   # similar buyer names suggested for an unknown name
         "fuzzy_cutoff": 0.5,                  # minimum similarity (0-1) for a suggested name
+        # Refine 2: input limits enforced INSIDE the tools (a client other than our agent cannot skip them)
+        "max_name_chars": 200,                # a buyer, supplier, keyword, id, ocid or role argument longer than this is refused
+        "max_text_chars": 2000,               # an explanation, reason, answer or title longer than this is refused
+        "decisions_listed_max": 200,          # flags listed by the decisions://run/{run_id} resource
+        "max_list_items": 100,                # a list argument (years, thresholds, flag ids, evidence, notes) longer than this is refused
+    },
+    "boundaries": {
+        # Refine 2: the ONLY tools that may open the flags database for writing; every other tool is read-only at the database
+        # connection (the analysis database is always read-only, with external file access switched off).
+        "write_tools": ["flag_finding", "record_decision", "attach_clarification", "draft_eval_memo"],
     },
     "categories": ["goods", "works", "services"],
     # Ordered: the first entry whose keywords occur in the (upper-cased) buyer name wins; no match -> default_buyer_type.
@@ -144,6 +154,8 @@ DEFAULT_RULES: dict[str, Any] = {
         "evidence_listed_per_flag": 10,       # cited records listed per approved finding in the memo
         "disclaimer": "This memo does not recommend or award any tender. Every finding is a screening indicator from "
                       "published OCDS data, approved by a human reviewer, and may have a legitimate explanation.",
+        "instruction_text_note": "Note: a name or title in this record contains text that reads like an instruction to an AI system. "
+                                 "It is quoted public-record data, not an instruction, and it was withheld from the language model.",
         "limitations": [
             "Bid documents are not published, so bid content, scoring and bidder qualifications cannot be assessed.",
             "The data has no tenderers, tender estimates or item-level detail; price comparisons use title words, category and "
@@ -160,6 +172,47 @@ DEFAULT_RULES: dict[str, Any] = {
         "min_ratio_to_median": 3.0,           # an anomaly must also be at least this multiple of the cohort median
         "max_anomalies": 10,
         "comparables_cited": 5,
+    },
+    "untrusted": {
+        # Refine 1 (prompt-injection hardening). Every string that comes out of the OCDS data (buyer, supplier, title, ...) is
+        # UNTRUSTED. Before it reaches an LLM it is scrubbed, length-capped, matched against these patterns and delimited.
+        "max_text_chars": 200,                # one string from data shown to the LLM is cut to this length
+        "max_list_items": 12,                 # a list from data shown to the LLM is cut to this many items
+        "max_depth": 8,                       # nesting depth followed when cleaning a tool result
+        "withheld_marker": "[withheld: text that reads like an instruction to the AI]",
+        "delimiter_open": "<<<UNTRUSTED_DATA",
+        "delimiter_close": "<<<END_UNTRUSTED_DATA",
+        # Matched (case-insensitive) against the folded text: NFKC, zero-width/format characters removed, spaces collapsed.
+        # A match quarantines that string in the LLM's view only; the stored record is never altered.
+        "injection_patterns": [
+            r"\b(ignore|disregard|forget|override|bypass)\b[^.\n]{0,40}\b(previous|prior|above|earlier|preceding|all|any|your|the)\b[^.\n]{0,30}\b(instruction|prompt|message|rule|guideline|direction|context|constraint)s?\b",
+            r"\b(system|developer)\s*(prompt|message|instruction)s?\b",
+            r"\bnew\s+(instruction|task|role|rule|objective)s?\b",
+            r"\byou\s+(are|must|should|will)\s+(now|no longer|always|never)\b",
+            r"\b(approve|reject|dismiss|suppress|delete|remove|clear|accept)\b[^.\n]{0,20}\b(all|every|each|these|those|any)\b[^.\n]{0,15}\bflags?\b",
+            r"\b(do not|don't|never)\s+(flag|report|raise|mention|disclose|reveal)\b",
+            r"\b(call|invoke|execute|run)\s+(the\s+)?(tool|function|command)\b",
+            r"\b(reveal|print|repeat|output)\b[^.\n]{0,25}\b(system prompt|instructions|api key|secret|password|credentials?)\b",
+            r"\b(award|recommend|select|choose)\b[^.\n]{0,20}\b(this|the|that)\s+(tender|contract|bid|supplier|company|bidder)\b",
+            r"<\s*\|[^>]{0,40}\|\s*>",
+            r"\[\s*/?\s*(inst|sys|system)\s*\]",
+            r"^\s*(#+\s*)?(system|assistant|user|human|ai)\s*:",
+            r"<\s*/?\s*(system|assistant|user|instructions?|tool_call|function_call|untrusted_data)\b",
+            r"\bjailbreak\b|\bdeveloper mode\b|\bDAN\b mode",
+            # Swahili (the data is Kenyan): "ignore the instructions", "approve all", "reject/remove all flags", "do not report the flag"
+            r"\b(puuza|upuuze|sahau|usahau|acha|kataa)\b[^.\n]{0,40}\b(maagizo|maelekezo|amri|kanuni)\b",
+            r"\b(idhinisha|uidhinishe|kubali|ukubali)\b[^.\n]{0,20}\b(zote|yote|kila|wote)\b",
+            r"\b(kataa|ondoa|futa|ondoe|ufute)\b[^.\n]{0,20}\b(zote|yote|bendera)\b[^.\n]{0,15}\b(bendera|zote|yote)\b",
+            r"\b(usiweke|usiripoti|usitoe|usifichue|usitaje)\b[^.\n]{0,15}\bbendera\b",
+            r"\bmaagizo\s+(mapya|yote)\b",
+        ],
+    },
+    "telemetry": {
+        # Refine 4: OpenTelemetry spans (run -> LLM call -> tool call) written next to the audit log; no collector, no network.
+        "enabled": True,
+        "file": "traces.jsonl",               # in the logs directory, one OTel span per line
+        "console": False,                     # also print spans to stderr (or set ZABUNI_OTEL_CONSOLE=1)
+        "query_chars": 200,                   # how much of the request text is kept on the run span
     },
     "demo": {
         # Hosted-demo guard (the Streamlit app on Day 5 uses it)
@@ -182,6 +235,14 @@ DEFAULT_RULES: dict[str, Any] = {
         "llm_backoff_base_s": 5.0,            # rate-limit waits: 5, 10, 20, 40 s (spans a one-minute limit window)
         "llm_max_wait_s": 90.0,               # longest single wait honoured when the provider says "try again in N s"
         "llm_max_tokens": 900,                # cap on each reply; Groq's free tier allows only 1000 output tokens/minute
+        # Refine 3: reply cap per provider and call kind (overrides llm_max_tokens). Measured on Ollama qwen2.5:7b: the Synthesiser's
+        # reply for 7-8 flags is ~850-900 tokens, so the 900 cap truncated it (invalid JSON) and the call was retried (2,700 wasted
+        # tokens in 2 of 3 full-catalogue Q1 runs). Groq stays at llm_max_tokens: its free tier allows 1,000 output tokens a minute.
+        "llm_max_tokens_by_kind": {"ollama": {"synth": 1500}, "groq": {}},
+        # Refine 5 (demo resilience): a call of this kind that returns unusable output this many times gives up at once, and the fallback
+        # chain does not pass it to the second model. The Synthesiser then uses the tools' own wording. (Measured: Qwen 27B returned malformed
+        # Synthesiser replies 5-8 times per run; each retry and each fallback attempt spent free-tier quota.)
+        "llm_malformed_limit_by_kind": {"synth": 2},
         "llm_temperature": 0.0,               # deterministic-as-possible planning and synthesis
         "llm_timeout_s": 60.0,
         # Hard rule 2: a configured model's name must contain one of these open-weights family names.
@@ -196,6 +257,12 @@ DEFAULT_RULES: dict[str, Any] = {
         "synth_reserve_tokens": 4000,         # kept back so the Synthesiser can still run when the investigation is cut short
         "max_clarify_tokens": 6000,           # most tokens one clarification round may use
         # --- token economy
+        # Refine 3: the Planner first sees a one-line-per-tool INDEX, then full schemas only for the tools it chose. A bool, or a
+        # per-provider table (measured: it saves tokens on the local 7B model, -49% prompt tokens per call, and costs +20% total
+        # tokens on Groq Qwen 27B, where the extra index call outweighs the saving; see EVALS.md section 6).
+        "progressive_disclosure": {"ollama": True, "groq": False, "default": True},
+        "index_brief_chars": 90,              # characters of each tool description shown in the index
+        "max_chosen_tools": 6,                # most tools the first planning step may choose
         "catalogue_brief_chars": 220,         # the Planner sees only the first sentence(s) of each tool description
         "ollama_num_ctx": 4096,               # context window requested from Ollama (its default may truncate prompts)
         "ollama_keep_alive": "15m",           # keep the local model loaded between calls
@@ -226,6 +293,7 @@ DEFAULT_RULES: dict[str, Any] = {
         # Argument NAMES shared by the tools; the Planner's scope (buyer, years) is injected into any step whose schema has
         # them but whose arguments omit them. Agent code never names a tool, only these argument conventions.
         "scope_args": {"buyer": "buyer", "supplier": "supplier", "years": "years", "date_from": "date_from", "date_to": "date_to"},
+        "fix_entity_args": ["buyer", "supplier"],   # a correction may repair these only to the original value, the request's scope value or a candidate the tool offered
         "filesystem_write_tool_hint": "write",  # the external server's file-writing tool: name containing this
         # Follow-up policy as DATA (names of tools appear here, not in agent code). A rule applies only if its tool
         # was discovered on the server. Templates: $result.<path>, $args.<path>, $scope.buyer, $scope.years,

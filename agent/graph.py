@@ -81,6 +81,8 @@ def pause_payload(result: dict[str, Any]) -> dict[str, Any] | None:
 async def run_agent(ctx: AgentContext, query: str, checkpointer: Any = None, scope_hint: dict[str, Any] | None = None) -> dict[str, Any]:
     """Run the graph for one request. Returns the state, plus `__interrupt__` when it paused for review."""
     graph = build_graph(ctx, checkpointer)
+    if getattr(ctx.audit, "tracer", None) is not None:
+        ctx.audit.tracer.annotate(**{"zabuni.query": query[:200]})
     return await graph.ainvoke({"run_id": ctx.audit.run_id, "query": query, "scope_hint": scope_hint}, config=_config(ctx))
 
 

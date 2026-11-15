@@ -50,7 +50,7 @@ def compute_price_benchmark(title_keyword: KeywordArg = None, ocid: OcidArg = No
     pb = cfg["price_benchmark"]
     params = {"title_keyword": title_keyword, "ocid": ocid, "award_id": award_id, "category": category,
               "buyer_type": buyer_type, "years": years, "amount": amount, "auto_keywords": auto_keywords}
-    kw, oc, aid = clean_text(title_keyword), clean_text(ocid), clean_text(award_id)
+    kw, oc, aid = clean_text(title_keyword, "title_keyword"), clean_text(ocid, "ocid"), clean_text(award_id, "award_id")
     cat = check_choice(category, categories(), "category")
     btype = check_choice(buyer_type, buyer_types(), "buyer_type")
     yrs = clean_years(years, cfg["data_cleaning"])

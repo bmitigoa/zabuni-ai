@@ -13,8 +13,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 from mcp_server import flagstore
-from mcp_server.fmt import fmt_value, kes
-from mcp_server.common import ToolInputError, clean_text, envelope, rules
+from mcp_server.fmt import compile_patterns, find_injection, fmt_value, kes, md_safe
+from mcp_server.common import ToolInputError, check_list, clean_text, envelope, long_text, rules
 from mcp_server.registry import tool
 
 TIMESTAMP_CHARS = 19        # 'YYYY-MM-DD HH:MM:SS'
@@ -25,10 +25,19 @@ def _decision_history(con: Any, flag_id: str) -> list[tuple[Any, ...]]:
                        "ORDER BY decided_at", [flag_id]).fetchall()
 
 
+def _reads_like_instruction(flag: dict[str, Any], detail: dict[str, Any], subject: dict[str, Any]) -> bool:
+    """True when a name, title or explanation of this finding reads like an instruction to an AI (it is quoted data, and the
+    memo says so, because a memo is often pasted into other tools)."""
+    patterns = compile_patterns(rules()["untrusted"])
+    texts = [flag.get("explanation"), subject.get("name"), *[a.get(k) for a in subject.get("awards") or [] for k in ("buyer", "supplier", "title")]]
+    return any(find_injection(str(t), patterns) for t in texts if t)
+
+
 def build_memo(approved: list[dict[str, Any]], counts: dict[str, int], con: Any, title: str, run_id: str | None,
                notes: list[str], memo_cfg: dict[str, Any], today: str) -> str:
     """Render the memo Markdown. Pure of side effects; every finding comes from an approved flag."""
     listed = int(memo_cfg["evidence_listed_per_flag"])
+    title = md_safe(title)                            # data text and the reviewer's request are shown inert (no link, image or markup)
     out = [f"# Evaluation memo: {title}", "", f"> {memo_cfg['disclaimer']}", ""]
     out += [f"Date: {today}" + (f" | Run: `{run_id}`" if run_id else ""), ""]
     n = len(approved)
@@ -46,43 +55,45 @@ def build_memo(approved: list[dict[str, Any]], counts: dict[str, int], con: Any,
         out.append(f"No finding was approved ({reviewed} flag(s) considered). This memo therefore contains no findings; that is "
                    "not evidence that nothing is wrong.")
     if notes:
-        out += ["", "## How this run ended", ""] + [f"- {x}" for x in notes]
+        out += ["", "## How this run ended", ""] + [f"- {md_safe(x)}" for x in notes]
     out += ["", "## Approved findings", ""]
     for i, f in enumerate(approved, 1):
         detail = f.get("detail") or {}
         subject = detail.get("subject") or {}
-        out += [f"### {i}. {f['rule']} (severity {f['severity']}), flag `{f['flag_id']}`", "", f["explanation"], ""]
+        out += [f"### {i}. {f['rule']} (severity {f['severity']}), flag `{f['flag_id']}`", "", md_safe(f["explanation"]), ""]
+        if _reads_like_instruction(f, detail, subject):
+            out += [memo_cfg["instruction_text_note"], ""]
         flagged = subject.get("awards") or []
         if flagged:
             out += ["Flagged " + ("award:" if len(flagged) == 1 else "awards:")]
-            out += [f"- {a.get('buyer') or 'unknown buyer'}; {a.get('supplier') or 'no supplier named'}; {a.get('date') or 'no date'}; "
+            out += [f"- {md_safe(a.get('buyer')) or 'unknown buyer'}; {md_safe(a.get('supplier')) or 'no supplier named'}; {a.get('date') or 'no date'}; "
                     f"{kes(a['amount_kes']) if a.get('amount_kes') is not None else 'no amount'}; ocid `{a['ocid']}`" for a in flagged]
             out.append("")
         elif subject.get("name"):
-            out += [f"Flagged {subject.get('kind')}: {subject['name']}", ""]
+            out += [f"Flagged {subject.get('kind')}: {md_safe(subject['name'])}", ""]
         signals = detail.get("signals") or []
         if signals:
             out.append("Signals (thresholds are provisional unless marked validated):")
             for sg in signals:
                 comp = sg.get("comparison") or {}
-                where = f" Compared against {comp['n']:,} {comp['label']}." if comp.get("n") else ""
-                out.append(f"- {sg.get('metric') or sg['summary']}; threshold: {sg.get('threshold') or 'n/a'}.{where}")
+                where = f" Compared against {comp['n']:,} {md_safe(comp['label'])}." if comp.get("n") else ""
+                out.append(f"- {md_safe(sg.get('metric') or sg['summary'])}; threshold: {md_safe(sg.get('threshold')) or 'n/a'}.{where}")
             if detail.get("comparison_note"):
-                out.append(f"- {detail['comparison_note']}")
-            out += [f"- Lawful explanations to rule out: {c}" for c in dict.fromkeys(sg["caveat"] for sg in signals if sg.get("caveat"))]
+                out.append(f"- {md_safe(detail['comparison_note'])}")
+            out += [f"- Lawful explanations to rule out: {md_safe(c)}" for c in dict.fromkeys(sg["caveat"] for sg in signals if sg.get("caveat"))]
             out.append("")
-        out += [f"Note: {h}" for h in detail.get("hints") or []] + ([""] if detail.get("hints") else [])
+        out += [f"Note: {md_safe(h)}" for h in detail.get("hints") or []] + ([""] if detail.get("hints") else [])
         out.append("Cited OCDS records:")
         for e in f["evidence"][:listed]:
-            out.append(f"- ocid `{e['ocid']}`, award `{e['award_id']}`, {e['field']} = {fmt_value(e['field'], e['value'])}")
+            out.append(f"- ocid `{e['ocid']}`, award `{e['award_id']}`, {e['field']} = {md_safe(fmt_value(e['field'], e['value']))}")
         if len(f["evidence"]) > listed:
             out.append(f"- ... and {len(f['evidence']) - listed} more cited record(s) stored with the flag")
         out += ["", "Reviewer decisions:"]
         for decided_at, decision, reason, role in _decision_history(con, f["flag_id"]):
-            out.append(f"- {str(decided_at)[:TIMESTAMP_CHARS]} UTC, {role}: **{decision}**. Reason: {reason}")
+            out.append(f"- {str(decided_at)[:TIMESTAMP_CHARS]} UTC, {md_safe(role)}: **{decision}**. Reason: {md_safe(reason)}")
         for c in flagstore.fetch_clarifications(con, f["flag_id"]):
-            out.append(f"- Clarification round {c['round']}: question \"{c['question']}\"; answer: "
-                       f"{c['response'] or '(not answered)'}")
+            out.append(f"- Clarification round {c['round']}: question \"{md_safe(c['question'])}\"; answer: "
+                       f"{md_safe(c['response']) or '(not answered)'}")
         out.append("")
     if not approved:
         out += ["(none)", ""]
@@ -106,8 +117,9 @@ def draft_eval_memo(run_id: str | None = None, flag_ids: list[str] | None = None
     cfg = rules()
     fl, memo_cfg = cfg["flags"], cfg["memo"]
     params = {"run_id": run_id, "flag_ids": flag_ids, "run_notes": run_notes, "title": title}
-    ids = [i.strip() for i in (flag_ids or []) if i and i.strip()]
-    rid = clean_text(run_id)
+    check_list(flag_ids, "flag_ids"); check_list(run_notes, "run_notes")
+    ids = [clean_text(i, "flag_id") for i in (flag_ids or []) if i and i.strip()]
+    rid = clean_text(run_id, "run_id")
     if not ids and not rid:
         raise ToolInputError("Provide run_id or flag_ids: the memo needs to know which flags to consider.")
     where, args = [], []
@@ -115,7 +127,8 @@ def draft_eval_memo(run_id: str | None = None, flag_ids: list[str] | None = None
         where.append(f"flag_id IN ({', '.join('?' for _ in ids)})"); args += ids
     else:
         where.append("run_id = ?"); args.append(rid)
-    notes = [n.strip() for n in (run_notes or []) if n and n.strip()]
+    title_text = clean_text(long_text(title, "title"))                # every limit is checked before the database is opened
+    notes = [long_text(n, "run_notes item") for n in (run_notes or []) if n and n.strip()]
     with flagstore.connect() as con:
         rows_ = con.execute(f"SELECT {', '.join(flagstore.COLUMNS)} FROM flags WHERE {' AND '.join(where)} "
                             "ORDER BY created_at, flag_id", args).fetchall()
@@ -124,7 +137,7 @@ def draft_eval_memo(run_id: str | None = None, flag_ids: list[str] | None = None
         for f in flags:
             counts[f["status"]] = counts.get(f["status"], 0) + 1
         approved = [f for f in flags if f["status"] == fl["status_approved"]]
-        text_title = clean_text(title) or (f"run {rid}" if rid else "selected flags")
+        text_title = title_text or (f"run {rid}" if rid else "selected flags")
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         markdown = build_memo(approved, counts, con, text_title, rid, notes, memo_cfg, today)
         memo_id = "memo_" + uuid.uuid4().hex[:flagstore.ID_HEX_CHARS]

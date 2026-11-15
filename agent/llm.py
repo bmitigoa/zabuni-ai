@@ -45,6 +45,11 @@ class LLMFormatError(LLMError):
     Another model may do better, so the fallback chain moves on; a quota error is a different failure (see LLMQuotaError)."""
 
 
+class LLMGaveUp(LLMFormatError):
+    """The per-call cap on malformed attempts was reached (rules agent.llm_malformed_limit_by_kind). The fallback chain does NOT hand
+    this call to the next model (its quota is not spent on a call that has already failed), and the caller uses the tools' own wording."""
+
+
 class LLMQuotaError(LLMError):
     """The provider's rate limit or quota stopped this model. Waiting is pointless; another model may still work."""
 
@@ -78,14 +83,19 @@ class ChatLLM:
     """One model: every agent node asks for a pydantic schema and gets a validated object back."""
 
     def __init__(self, chat: Any, name: str, max_retries: int, backoff_base_s: float, max_wait_s: float = 90.0, *,
-                 rules: dict[str, Any] | None = None, ledger: UsageLedger | None = None) -> None:
+                 rules: dict[str, Any] | None = None, ledger: UsageLedger | None = None,
+                 kind_caps: dict[str, int] | None = None, malformed_limits: dict[str, int] | None = None) -> None:
         self.chat, self.name = chat, name
+        self.malformed_limits = dict(malformed_limits or {})   # most malformed attempts one call of this kind may make, then it gives up
+        self.kind_caps = dict(kind_caps or {})             # reply cap (tokens) for specific call kinds, e.g. {'synth': 1500}
+        self._capped: dict[str, Any] = {}
         self.provider, _, self.model = name.partition(":")
         self.max_retries, self.backoff_base_s, self.max_wait_s = int(max_retries), float(backoff_base_s), float(max_wait_s)
         self.rules, self.ledger = rules, ledger
         self.audit: Any = None
         self.run_id: str | None = None
         self.calls = self.tokens = self.prompt_tokens = self.completion_tokens = 0
+        self.attempts = self.malformed = 0           # model attempts, and those that returned unusable output (a malformed tool call)
         self.cost_usd = 0.0
         self.latency_s = 0.0
 
@@ -115,6 +125,18 @@ class ChatLLM:
                              total_tokens=total, cost_usd=cost, seconds=round(seconds, 2),
                              est_remaining_daily_tokens=remaining)
 
+    def _malformed_attempt(self, kind: str, reason: str, in_call: int) -> None:
+        """Count (and log) an attempt whose output could not be used: a malformed tool call or a schema mismatch. `in_call` is how many
+        malformed attempts this call has made, this one included; at the kind's limit the call gives up (LLMGaveUp) instead of retrying."""
+        self.malformed += 1
+        if self.audit is not None:
+            self.audit.event("llm_malformed", kind=kind, model=self.name, reason=redact(reason)[:240])
+        limit = int(self.malformed_limits.get(kind) or 0)
+        if limit and in_call >= limit:
+            if self.audit is not None:
+                self.audit.event("llm_gave_up", kind=kind, model=self.name, malformed_attempts=in_call, limit=limit)
+            raise LLMGaveUp(f"{self.name}: {kind} call gave up after {in_call} malformed attempt(s) (limit {limit}): {redact(reason)[:200]}")
+
     def _note_quota(self, message: str) -> None:
         """Remember the provider's own quota figures when a 429 states them."""
         report = parse_quota_report(message)
@@ -127,16 +149,27 @@ class ChatLLM:
             self.audit.event("quota_report", model=self.name, **report, window="day" if daily else "minute",
                              source="provider 429 message")
 
+    def _chat_for(self, kind: str) -> Any:
+        """The chat model for this call kind: a copy with the kind's reply cap when rules set one (num_predict for Ollama, max_tokens for Groq)."""
+        cap = self.kind_caps.get(kind)
+        if not cap or not hasattr(self.chat, "model_copy"):
+            return self.chat
+        if kind not in self._capped:
+            field = "num_predict" if self.provider == "ollama" else "max_tokens"
+            self._capped[kind] = self.chat.model_copy(update={field: int(cap)})
+        return self._capped[kind]
+
     # ----------------------------------------------------------------- the call
     async def structured(self, schema: type[T], system: str, user: str, kind: str = "llm") -> T:
         """Ask for output matching `schema`. Retries on rate limits (honouring the provider's wait hint) and on invalid or
         missing output (feeding the validation error back). Raises LLMQuotaError when the model's quota or rate limit
         stops it, LLMError for anything else."""
-        runnable = self.chat.with_structured_output(schema, include_raw=True)
+        runnable = self._chat_for(kind).with_structured_output(schema, include_raw=True)
         messages: list[Any] = [SystemMessage(content=system), HumanMessage(content=user)]
-        last, rate_limited = "no attempt made", False
+        last, rate_limited, in_call = "no attempt made", False, 0
         for attempt in range(self.max_retries + 1):
             started = time.time()
+            self.attempts += 1
             try:
                 out = await runnable.ainvoke(messages)
             except Exception as exc:  # noqa: BLE001 - provider SDKs raise many types; classify by text
@@ -156,6 +189,8 @@ class ChatLLM:
                     raise LLMError(f"{self.name}: {redact(last)[:300]}. Check MODEL / the API key: "
                                    "`python -m agent.models` lists the models this key can use.") from exc
                 rate_limited = False
+                in_call += 1
+                self._malformed_attempt(kind, last, in_call)
                 messages.append(HumanMessage(content=f"Your previous reply was rejected by the API ({last[:300]}). "
                                                      "Reply again with valid output only."))
                 continue
@@ -167,6 +202,8 @@ class ChatLLM:
             if parsed is not None:
                 return parsed
             last = f"invalid output: {out.get('parsing_error')}"
+            in_call += 1
+            self._malformed_attempt(kind, last, in_call)
             messages.append(HumanMessage(content=f"Your previous reply was not valid ({str(last)[:300]}). "
                                                  "Reply again with output that matches the schema exactly."))
         if rate_limited:
@@ -203,6 +240,8 @@ class FallbackLLM:
         return sum(getattr(m, attr) for m in self.chain)
 
     calls = property(lambda self: self._sum("calls"))
+    attempts = property(lambda self: self._sum("attempts"))
+    malformed = property(lambda self: self._sum("malformed"))
     tokens = property(lambda self: self._sum("tokens"))
     prompt_tokens = property(lambda self: self._sum("prompt_tokens"))
     completion_tokens = property(lambda self: self._sum("completion_tokens"))
@@ -220,6 +259,8 @@ class FallbackLLM:
             model = self.chain[position]
             try:
                 return await model.structured(schema, system, user, kind)
+            except LLMGaveUp:
+                raise                  # the call already failed its allowance: do not spend the next model's quota on it
             except (LLMQuotaError, LLMFormatError) as exc:
                 reasons.append(f"{model.name}: {str(exc)[:200]}")
                 is_quota = isinstance(exc, LLMQuotaError)
@@ -259,5 +300,6 @@ def create_llm(settings: Settings, rules: dict[str, Any], ledger: UsageLedger | 
         assert_open_weights(m, agent_cfg["open_weights_families"])
         chain.append(ChatLLM(build_chat(settings.provider, m, settings, agent_cfg), f"{settings.provider}:{m}",
                              agent_cfg["llm_max_retries"], agent_cfg["llm_backoff_base_s"], agent_cfg["llm_max_wait_s"],
-                             rules=rules, ledger=ledger))
+                             rules=rules, ledger=ledger, kind_caps=(agent_cfg.get("llm_max_tokens_by_kind") or {}).get(settings.provider, {}),
+                             malformed_limits=agent_cfg.get("llm_malformed_limit_by_kind") or {}))
     return FallbackLLM(chain)

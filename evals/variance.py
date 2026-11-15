@@ -1,5 +1,10 @@
 """Run-to-run variance:  python -m evals.variance --provider ollama --runs 5   (or --provider groq --runs 2)
 
+Refine 3: `--mode full|progressive` runs the SAME code with the Planner shown the full tool catalogue (the v1.0 behaviour) or
+the compact index followed by full schemas for the chosen tools. Results go to variance_<provider>_<mode>.json (the v1.0 file
+variance_<provider>.json is kept as history). Per run it also records every LLM call (kind, prompt tokens, seconds), malformed
+model attempts and plan validity, so before/after tables can be built from real measurements.
+
 The same two requests are run N times each with the real model, no human review step (each run ends at the approval gate). For every
 run it records the plan (tool names), tool calls, flags raised, which awards were flagged, tokens, estimated cost and wall-clock
 seconds, then the spread across runs. Results are appended to evals/results/variance_<provider>.json after every run, so a long
@@ -47,18 +52,28 @@ def flagged_keys(flags: list[dict[str, Any]]) -> list[str]:
     return sorted(set(keys))
 
 
-async def one_run(settings, query: dict[str, Any]) -> dict[str, Any]:
+async def one_run(settings, query: dict[str, Any], mode: str = 'progressive') -> dict[str, Any]:
     work = Path(tempfile.mkdtemp(prefix="zabuni_var_"))
     os.environ["ZABUNI_CHECKPOINT_DB"] = str(work / "checkpoints.sqlite")
     env = {"ZABUNI_FLAGS_DB": str(work / "flags.duckdb")}                       # a fresh flags store: no memory of earlier runs
     run_id = new_run_id()
     started = time.time()
-    record: dict[str, Any] = {"query": query["id"], "run_id": run_id}
+    record: dict[str, Any] = {"query": query["id"], "run_id": run_id, "mode": mode}
     fallbacks: list[dict[str, Any]] = []
+    llm_calls: list[dict[str, Any]] = []
+    seen: dict[str, int] = {"malformed": 0, "rejected_steps": 0, "choice_fallbacks": 0}
 
     def echo(kind: str, rec: dict[str, Any]) -> None:
         if kind == "llm_fallback":
             fallbacks.append(rec)
+        elif kind == "llm_call":
+            llm_calls.append({k: rec.get(k) for k in ("kind", "model", "prompt_tokens", "completion_tokens", "seconds")})
+        elif kind == "llm_malformed":
+            seen["malformed"] += 1
+        elif kind == "plan_rejected_steps":
+            seen["rejected_steps"] += len(rec.get("tools") or [])
+        elif kind == "tools_choice_fallback":
+            seen["choice_fallbacks"] += 1
     try:
         async with open_session(settings, run_id, echo=echo, extra_env=env) as s:
             state = await run_agent(s.ctx, query["text"], s.checkpointer, query["hint"])
@@ -70,7 +85,10 @@ async def one_run(settings, query: dict[str, Any]) -> dict[str, Any]:
                        "tokens": usage["tokens"], "prompt_tokens": usage["prompt_tokens"], "completion_tokens": usage["completion_tokens"],
                        "cost_usd": usage["cost_usd"], "seconds": round(time.time() - started, 1), "llm_calls": usage["llm_calls"],
                        "fallbacks": len(fallbacks), "models": usage["models"], "scope_request": bool(state.get("scope_request")),
-                       "capped": len(state.get("capped", [])), "merged_notes": [n for n in state.get("notes", []) if "merged" in n]}
+                       "capped": len(state.get("capped", [])), "merged_notes": [n for n in state.get("notes", []) if "merged" in n],
+                       "call_log": llm_calls, "malformed_attempts": seen["malformed"], "model_attempts": len(llm_calls) + seen["malformed"],
+                       "plan_steps_rejected": seen["rejected_steps"], "plan_steps_proposed": len(state.get("plan", {}).get("steps", [])) + seen["rejected_steps"],
+                       "choice_fallbacks": seen["choice_fallbacks"]}
     except (LLMError, Exception) as exc:  # noqa: BLE001 - a failed run is data too
         record |= {"ok": False, "error": f"{type(exc).__name__}: {str(exc)[:300]}", "seconds": round(time.time() - started, 1)}
     return record
@@ -100,22 +118,32 @@ def summarise(runs: list[dict[str, Any]]) -> dict[str, Any]:
     return out
 
 
-async def amain(provider: str, runs: int) -> None:
+async def amain(provider: str, runs: int, mode: str, only: str | None = None, tag: str = "") -> None:
     settings = load_settings()
+    rules_file = Path(tempfile.mkdtemp(prefix="zabuni_rules_")) / "rules.json"          # reaches the MCP server (ZABUNI_* is forwarded) and the agent
+    rules_file.write_text(json.dumps({"agent": {"progressive_disclosure": mode == "progressive"}}), encoding="utf-8")   # a bool overrides the per-provider table
+    os.environ["ZABUNI_RULES_FILE"] = str(rules_file)
     model = DEFAULT_MODELS[provider] if provider != settings.provider else settings.model
     settings = dataclasses.replace(settings, provider=provider, model=model)
-    path = RESULTS / f"variance_{provider}.json"
-    saved = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {"provider": provider, "model": model, "runs": []}
+    path = RESULTS / f"variance_{provider}_{mode}{tag}.json"
+    saved = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {"provider": provider, "model": model, "mode": mode, "runs": []}
     for i in range(runs):
         for q in QUERIES:
+            if only and q["id"] != only:
+                continue                                              # run a single query (memory-friendly: one run per invocation)
             if sum(1 for r in saved["runs"] if r["query"] == q["id"]) > i:
                 continue                                              # resume: this repetition is already recorded
-            rec = await one_run(settings, q)
+            rec = await one_run(settings, q, mode)
             saved["runs"].append(rec)
+            if not rec.get("ok") and any(m in rec.get("error", "").lower() for m in ("quota", "rate limit", "rate limited")):
+                saved["stopped"] = f"stopped at {q['id']} repetition {i + 1}: {rec['error'][:200]}"
+                path.write_text(json.dumps(saved, indent=1, ensure_ascii=False), encoding="utf-8")
+                print(f"{provider}/{mode}: provider quota exhausted; stopped cleanly after {len(saved['runs']) - 1} finished run(s).", flush=True)
+                return
             saved["summary"] = summarise(saved["runs"])
             RESULTS.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(saved, indent=1, ensure_ascii=False), encoding="utf-8")
-            print(f"{provider} {q['id']} run {i + 1}/{runs}: " + (f"{rec['n_flags']} flags, {rec['tokens']} tokens, {rec['seconds']} s, plan {rec['plan_tools']}"
+            print(f"{provider}/{mode} {q['id']} run {i + 1}/{runs}: " + (f"{rec['n_flags']} flags, {rec['tokens']} tokens, {rec['seconds']} s, plan {rec['plan_tools']}"
                                                               if rec.get("ok") else rec["error"]), flush=True)
 
 
@@ -125,8 +153,11 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--provider", choices=["ollama", "groq"], default="ollama")
     ap.add_argument("--runs", type=int, default=5)
+    ap.add_argument("--only", choices=[q["id"] for q in QUERIES], default=None, help="run only this query (resumes: finished runs are kept)")
+    ap.add_argument("--tag", default="", help="suffix for the results file, e.g. _cap for a run made after the reply-cap change")
+    ap.add_argument("--mode", choices=["full", "progressive"], default="progressive")
     args = ap.parse_args()
-    asyncio.run(amain(args.provider, args.runs))
+    asyncio.run(amain(args.provider, args.runs, args.mode, args.only, args.tag))
 
 
 if __name__ == "__main__":

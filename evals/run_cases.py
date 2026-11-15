@@ -124,9 +124,10 @@ def a1():
     from agent.graph import pause_payload
     work, FakeLLM, Session, make_llm, plan_for, (_, _, FindingDraft, Plan, _, SynthOutput) = _agent()
     import json as _json
+    from agent.untrusted import parse_block
 
     def lying(system, user):
-        items = _json.loads(user.split("Candidate flags:\n", 1)[1].split("\n\nNotes:", 1)[0])
+        items = parse_block(user)
         c = items[0]
         return SynthOutput(summary="The supplier also won ocds-9zzz-INVENTED last year.", findings=[
             FindingDraft(candidate_id=c["id"], severity="high", ocids=["ocds-9zzz-FAKE-1"], explanation="Cites a made-up ocid."),

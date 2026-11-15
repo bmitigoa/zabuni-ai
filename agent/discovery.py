@@ -86,6 +86,11 @@ def compact_schema(schema: dict[str, Any]) -> str:
     return compact_args(schema)
 
 
+def tool_index(tools: list[ToolInfo], brief_chars: int = 90) -> str:
+    """One line per tool: name and the start of its description. No arguments, no schemas (those are disclosed only for chosen tools)."""
+    return "\n".join(f"- {t.name}: {brief(t.description, brief_chars)}" for t in tools)
+
+
 def catalogue(tools: list[ToolInfo], brief_chars: int = 220) -> str:
     """The tool catalogue shown to the Planner: name, a brief description, and a compact argument list."""
     return "\n".join(f"- {t.name}: {brief(t.description, brief_chars)}\n  args: {compact_args(t.input_schema)}" for t in tools)

@@ -16,6 +16,7 @@ from agent.graph import pause_payload, pending_payload, resume_agent, run_agent
 from agent.mcp_client import McpBackend
 from agent.nodes import AgentContext
 from agent.settings import Settings
+from agent.untrusted import parse_block
 from agent.state import ClarifyAnswer, ClarifyPlan, FindingDraft, Plan, PlanStep, Scope, SynthOutput
 from tests.fakes import FakeLLM
 
@@ -36,7 +37,7 @@ def plan_for(*steps, buyer=BUYER, years=(2022, 2023, 2024)):
 
 
 def synth(system, user):
-    items = json.loads(user.split("Candidate flags:\n", 1)[1].split("\n\nNotes:", 1)[0])
+    items = parse_block(user)
     return SynthOutput(summary="Neutral summary written by the fake model.",
                        findings=[FindingDraft(candidate_id=i["id"], severity=i["severity_hint"], ocids=i["ocids"][:1],
                                               explanation=f"{i['summary']} Flagged for human review.") for i in items])

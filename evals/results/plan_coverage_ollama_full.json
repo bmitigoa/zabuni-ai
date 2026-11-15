@@ -1,0 +1,186 @@
+{
+ "provider": "ollama",
+ "model": "qwen2.5:7b",
+ "mode": "full",
+ "cases": [
+  {
+   "id": "P1",
+   "type": "splitting",
+   "essential": [
+    [
+     "detect_splitting"
+    ]
+   ],
+   "ok": true,
+   "planned": [
+    "search_awards",
+    "detect_splitting"
+   ],
+   "present": 1,
+   "missing": [],
+   "scope_requested": false,
+   "tokens": 1191,
+   "llm_calls": 1,
+   "malformed": 0
+  },
+  {
+   "id": "P2",
+   "type": "non-competitive method",
+   "essential": [
+    [
+     "detect_noncompetitive_method"
+    ]
+   ],
+   "ok": true,
+   "planned": [
+    "search_awards",
+    "detect_noncompetitive_method",
+    "detect_splitting"
+   ],
+   "present": 1,
+   "missing": [],
+   "scope_requested": false,
+   "tokens": 1217,
+   "llm_calls": 1,
+   "malformed": 0
+  },
+  {
+   "id": "P3",
+   "type": "supplier concentration",
+   "essential": [
+    [
+     "supplier_concentration"
+    ]
+   ],
+   "ok": true,
+   "planned": [
+    "search_awards",
+    "supplier_concentration",
+    "detect_noncompetitive_method"
+   ],
+   "present": 1,
+   "missing": [],
+   "scope_requested": false,
+   "tokens": 1187,
+   "llm_calls": 1,
+   "malformed": 0
+  },
+  {
+   "id": "P4",
+   "type": "price outliers",
+   "essential": [
+    [
+     "detect_price_anomalies",
+     "compute_price_benchmark"
+    ]
+   ],
+   "ok": true,
+   "planned": [
+    "search_awards",
+    "detect_price_anomalies"
+   ],
+   "present": 1,
+   "missing": [],
+   "scope_requested": false,
+   "tokens": 1158,
+   "llm_calls": 1,
+   "malformed": 0
+  },
+  {
+   "id": "P5",
+   "type": "price comparison",
+   "essential": [
+    [
+     "detect_price_anomalies",
+     "compute_price_benchmark"
+    ]
+   ],
+   "ok": true,
+   "planned": [
+    "search_awards",
+    "compute_price_benchmark",
+    "detect_price_anomalies"
+   ],
+   "present": 1,
+   "missing": [],
+   "scope_requested": false,
+   "tokens": 1245,
+   "llm_calls": 1,
+   "malformed": 0
+  },
+  {
+   "id": "P6",
+   "type": "splitting + price (Q1)",
+   "essential": [
+    [
+     "detect_splitting"
+    ],
+    [
+     "detect_price_anomalies"
+    ]
+   ],
+   "ok": true,
+   "planned": [
+    "search_awards",
+    "detect_splitting",
+    "detect_price_anomalies"
+   ],
+   "present": 2,
+   "missing": [],
+   "scope_requested": false,
+   "tokens": 1269,
+   "llm_calls": 1,
+   "malformed": 0
+  },
+  {
+   "id": "P7",
+   "type": "non-competitive + concentration (Q2)",
+   "essential": [
+    [
+     "detect_noncompetitive_method"
+    ],
+    [
+     "supplier_concentration"
+    ]
+   ],
+   "ok": true,
+   "planned": [
+    "search_awards",
+    "detect_noncompetitive_method",
+    "supplier_concentration"
+   ],
+   "present": 2,
+   "missing": [],
+   "scope_requested": false,
+   "tokens": 1192,
+   "llm_calls": 1,
+   "malformed": 0
+  },
+  {
+   "id": "P8",
+   "type": "supplier-scoped splitting",
+   "essential": [
+    [
+     "detect_splitting"
+    ]
+   ],
+   "ok": true,
+   "planned": [
+    "search_awards",
+    "detect_splitting"
+   ],
+   "present": 1,
+   "missing": [],
+   "scope_requested": false,
+   "tokens": 1214,
+   "llm_calls": 1,
+   "malformed": 0
+  }
+ ],
+ "summary": {
+  "cases": 8,
+  "failed": 0,
+  "essential": 10,
+  "present": 10
+ }
+}

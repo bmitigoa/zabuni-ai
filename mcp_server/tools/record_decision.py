@@ -11,7 +11,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 from mcp_server import flagstore
-from mcp_server.common import ToolInputError, clean_text, envelope, rules
+from mcp_server.common import ToolInputError, clean_text, envelope, long_text, rules
+from mcp_server.fmt import scrub
 from mcp_server.registry import tool
 
 DECISION_TO_STATUS = {"approve": "status_approved", "reject": "status_rejected", "clarify": "status_clarify"}
@@ -34,13 +35,14 @@ def record_decision(flag_id: str, decision: str, reason: str, reviewer_role: str
     dec = (decision or "").strip().lower()
     if dec not in rv["decisions"]:
         raise ToolInputError(f"decision must be one of {rv['decisions']}.")
-    why = (reason or "").strip()
+    why = scrub(long_text(reason, "reason"))                      # no invisible or control characters in stored text
     if len(why) < int(rv["min_reason_chars"]):
         raise ToolInputError(f"a reason is required (at least {rv['min_reason_chars']} characters).")
-    role = (reviewer_role or "").strip().lower()
+    role = (clean_text(reviewer_role, "reviewer_role") or "").lower()
+    run_id = clean_text(run_id, "run_id")
     if role not in rv["roles"]:
         raise ToolInputError(f"reviewer_role must be one of {rv['roles']} (reviewers are recorded by role, not by name).")
-    fid = clean_text(flag_id)
+    fid = clean_text(flag_id, "flag_id")
     if not fid:
         raise ToolInputError("flag_id is empty.")
     open_states = [fl["status_pending"], fl["status_clarify"]]

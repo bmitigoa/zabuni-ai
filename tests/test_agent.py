@@ -21,6 +21,7 @@ from agent.llm import LLMError
 from agent.mcp_client import McpBackend, zabuni_connection
 from agent.nodes import AgentContext
 from agent.settings import Settings
+from agent.untrusted import parse_block
 from agent.state import ArgsFix, FindingDraft, Plan, PlanStep, Scope, SynthOutput
 from mcp_server.rules import load_rules
 from tests.fakes import FakeLLM
@@ -81,7 +82,7 @@ def stored_flags(path):
 
 def synth_from_candidates(user: str) -> SynthOutput:
     """A cooperative 'model': one finding per candidate id it is shown, worded from the candidate's own summary."""
-    items = json.loads(user.split("Candidate flags:\n", 1)[1].split("\n\nNotes:", 1)[0])
+    items = parse_block(user)
     return SynthOutput(summary="Neutral summary written by the fake model.",
                        findings=[FindingDraft(candidate_id=i["id"], severity=i["severity_hint"], ocids=i["ocids"][:1],
                                               explanation=f"{i['summary']} Flagged for human review.") for i in items])
@@ -211,7 +212,8 @@ def test_invalid_arguments_never_reach_the_server_and_are_corrected_first(tmp_pa
 
 
 def test_correction_is_bounded_and_give_up_is_respected(tmp_path):
-    wrong = ArgsFix(args={"buyer": "Still Not A Buyer"})
+    # a correction that changes another argument but keeps the same unknown buyer (naming a different, invented buyer is refused: Refine 1)
+    wrong = ArgsFix(args={"buyer": "Nope Nope", "limit": 3})
     state, ctx = run_scenario(FakeLLM({Plan: make_plan(("detect_splitting", {"buyer": "Nope Nope"})), ArgsFix: wrong}), tmp_path)
     assert state["results"][0]["error"] and state["results"][0]["corrections"] == ctx.rules["agent"]["max_corrections"]
     assert len(tool_calls(tmp_path)) == 1 + ctx.rules["agent"]["max_corrections"]               # first try + one corrected retry
@@ -234,7 +236,7 @@ def test_the_step_cap_stops_the_run_and_says_so(tmp_path):
 # ----------------------------------------------------------------------------- citation guard (integration)
 def test_the_citation_guard_drops_invented_ocids_and_nothing_invented_is_stored(tmp_path, isolated_flags_db):
     def lying_synth(system, user):
-        items = json.loads(user.split("Candidate flags:\n", 1)[1].split("\n\nNotes:", 1)[0])
+        items = parse_block(user)
         c = items[0]
         return SynthOutput(summary="The supplier also won ocds-9zzz-INVENTED-SUMMARY last year.", findings=[
             FindingDraft(candidate_id=c["id"], severity="high", ocids=["ocds-9zzz-FAKE-1"], explanation="Cites a made-up ocid."),
@@ -281,7 +283,7 @@ def test_only_the_configured_number_of_candidates_is_shown_to_the_synthesiser_bu
     llm = FakeLLM({Plan: make_plan(("detect_splitting", {"buyer": BUYER, "limit": 5})),
                    SynthOutput: lambda system, user: synth_from_candidates(user)})
     state, _ = run_scenario(llm, tmp_path, rules_edit=lambda r: r["agent"].update(synth_max_candidates=1))
-    shown = json.loads(llm.prompts["SynthOutput"][0][1].split("Candidate flags:" + chr(10), 1)[1].split(chr(10) * 2 + "Notes:", 1)[0])
+    shown = parse_block(llm.prompts["SynthOutput"][0][1])
     total = sum(len((r["output"]["result"].get("flags") or [])) for r in state["results"])
     assert len(shown) == 1 and total > 1 and len(state["flags_created"]) == total               # the rest keep the tool's text
     assert [f["source"] for f in state["findings"]].count("candidate") == 1
