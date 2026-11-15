@@ -222,6 +222,26 @@ def prune_unknown_args(args: dict[str, Any], schema: dict[str, Any]) -> tuple[di
     return kept, sorted(set(args) - set(kept))
 
 
+def _same_name(a: Any, b: Any) -> bool:
+    return isinstance(a, str) and isinstance(b, str) and " ".join(a.split()).casefold() == " ".join(b.split()).casefold()
+
+
+def fix_violations(old: dict[str, Any], new: dict[str, Any], scope: dict[str, Any], candidates: list[Any],
+                   entity_args: list[str]) -> list[str]:
+    """Names of entity arguments (rules agent.fix_entity_args) that a model-written correction changed to a value that is NOT the
+    original one, the request's scope value, or a candidate name the tool itself offered. A correction repairs a call; it must
+    never aim it at a different buyer or supplier, whatever the data said (prompt-injection defence, layer 1)."""
+    bad = []
+    for key in entity_args:
+        value = (new or {}).get(key)
+        if value is None:
+            continue
+        allowed = [old.get(key), scope.get(key), *candidates]
+        if not any(_same_name(value, a) for a in allowed):
+            bad.append(key)
+    return bad
+
+
 # ----------------------------------------------------------------------------- argument checks
 def schema_problems(args: Any, schema: dict[str, Any]) -> list[str]:
     """Human-readable problems of `args` against a tool's JSON input schema (empty list = valid)."""
