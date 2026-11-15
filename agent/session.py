@@ -14,6 +14,7 @@ from agent.graph import saved_state, sqlite_checkpointer
 from agent.llm import create_llm
 from agent.mcp_client import McpBackend
 from agent.nodes import AgentContext
+from agent.telemetry import RunTracer
 from agent.settings import ROOT, Settings
 from agent.usage import UsageLedger
 
@@ -54,6 +55,11 @@ async def open_session(settings: Settings, run_id: str, echo: Callable[[str, dic
         ledger = UsageLedger(settings.logs_dir / LEDGER_FILE)
         llm = create_llm(settings, rules, ledger)
         llm.attach(audit, ledger, run_id)
+        tracer = RunTracer.create(settings.logs_dir, rules.get("telemetry", {}), env_console=os.environ.get("ZABUNI_OTEL_CONSOLE") == "1",
+                                  primary_model=llm.names[0])
+        audit.tracer = tracer
+        tracer.start_run(run_id, "review" if resume else "run", model=llm.names[0])
+        stack.callback(tracer.end_run)                   # closes the run span (with the session totals) when the session closes
         tools = await backend.tools()
         checkpointer = await stack.enter_async_context(sqlite_checkpointer(checkpoint_path(rules)))
         ctx = AgentContext(backend=backend, llm=llm, audit=audit, rules=rules, tools=tools)

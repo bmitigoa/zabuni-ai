@@ -50,6 +50,7 @@ class AuditLog:
         self.dir.mkdir(parents=True, exist_ok=True)
         self.max_chars = int(max_chars)
         self.echo = echo
+        self.tracer: Any = None                      # an agent.telemetry.RunTracer: tool and LLM calls also become OpenTelemetry spans
         self._lock = threading.Lock()
 
     def _append(self, filename: str, record: dict[str, Any]) -> None:
@@ -67,6 +68,8 @@ class AuditLog:
                   "output_truncated": output is not None and len(text) > self.max_chars,
                   "duration_ms": round(duration_s * MS_PER_S, 1), "error": error, "step": step}
         self._append(TOOL_CALLS_FILE, record)
+        if self.tracer is not None:
+            self.tracer.tool_call(record)
         if self.echo:
             self.echo("tool_call", record)
         return record
@@ -75,6 +78,8 @@ class AuditLog:
         """Record an agent decision: plan, follow_up, recovery, correction, step_cap, citation_guard, ..."""
         record = {"run_id": self.run_id, "timestamp": now_iso(), "type": type_, **data}
         self._append(EVENTS_FILE, record)
+        if self.tracer is not None:
+            self.tracer.audit_event(type_, record)
         if self.echo:
             self.echo(type_, record)
         return record
